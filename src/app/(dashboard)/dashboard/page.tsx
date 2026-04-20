@@ -41,7 +41,7 @@ export default async function DashboardPage() {
   const avgScore =
     recentSessions.length > 0
       ? Math.round(
-          recentSessions.reduce((acc: number, s) => acc + (s.scorePercent ?? 0), 0) /
+          recentSessions.reduce((acc: number, s: { scorePercent: number | null }) => acc + (s.scorePercent ?? 0), 0) /
             recentSessions.length
         )
       : 0;
