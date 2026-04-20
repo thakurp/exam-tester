@@ -431,7 +431,7 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-3.7-sonnet",
+        model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
       }),

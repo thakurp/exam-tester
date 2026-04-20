@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 const EXPLANATION_MODEL =
   process.env.OPENROUTER_EXPLANATION_MODEL ??
-  "anthropic/claude-3.7-sonnet";
+  "anthropic/claude-sonnet-4.6";
 
 const OPENROUTER_BASE_URL =
   process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
