@@ -130,7 +130,9 @@ export async function getOrCreateExplanation(
 
   let responseJson: Omit<ExplanationResponse, "fromCache">;
   try {
-    responseJson = JSON.parse(rawContent);
+    // Strip markdown code fences if the model wrapped the JSON (e.g. ```json ... ```)
+    const cleaned = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    responseJson = JSON.parse(cleaned);
   } catch {
     responseJson = {
       explanation: rawContent,
