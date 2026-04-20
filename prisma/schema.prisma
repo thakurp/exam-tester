@@ -1,0 +1,291 @@
+// This is your Prisma schema file
+// https://www.prisma.io/docs/concepts/components/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  STUDENT
+  PARENT
+}
+
+enum QuestionType {
+  MCQ
+  SHORT_ANSWER
+  TRUE_FALSE
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TestMode {
+  EXAM
+  PRACTICE
+}
+
+enum PointsEventType {
+  CORRECT_ANSWER
+  STREAK_BONUS
+  BADGE_EARNED
+  UPLOAD_APPROVED
+  REFERRAL
+}
+
+enum ExplanationStatus {
+  PENDING
+  SCANNING
+  REVIEWING
+  APPROVED
+  REJECTED
+}
+
+// ─── Users ────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String?
+  role      UserRole @default(STUDENT)
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Student-specific
+  parentId String?
+  parent   User?   @relation("ParentStudent", fields: [parentId], references: [id])
+  children User[]  @relation("ParentStudent")
+
+  testSessions          TestSession[]
+  pointsLedger          PointsLedger[]
+  communityExplanations CommunityExplanation[]
+  streak                Streak?
+
+  @@index([clerkId])
+  @@index([role])
+}
+
+// ─── Content Hierarchy ────────────────────────────────────
+
+model Subject {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  country     String   @default("US")
+  examBoard   String?
+  color       String   @default("#6366f1")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  topics       Topic[]
+  testSessions TestSession[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model Topic {
+  id          String   @id @default(cuid())
+  subjectId   String
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@unique([subjectId, name])
+  @@index([subjectId])
+}
+
+// ─── Questions ────────────────────────────────────────────
+
+model Question {
+  id            String         @id @default(cuid())
+  topicId       String
+  type          QuestionType   @default(MCQ)
+  difficulty    Difficulty     @default(MEDIUM)
+  status        QuestionStatus @default(DRAFT)
+  bloomLevel    Int            @default(1)
+
+  stem              String
+  explanation       String?
+  source            String?
+  imageUrl          String?
+  correctAnswer     String?
+  correctAnswerText String?
+
+  pointsEasy   Int @default(10)
+  pointsMedium Int @default(25)
+  pointsHard   Int @default(50)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+
+  topic                 Topic                  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  options               McqOption[]
+  userAnswers           UserAnswer[]
+  llmExplanationCache   LlmExplanationCache[]
+  communityExplanations CommunityExplanation[]
+
+  @@index([topicId])
+  @@index([status])
+  @@index([difficulty])
+  @@index([type])
+}
+
+model McqOption {
+  id         String  @id @default(cuid())
+  questionId String
+  label      String
+  text       String
+  isCorrect  Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+// ─── Test Sessions ────────────────────────────────────────
+
+model TestSession {
+  id        String   @id @default(cuid())
+  userId    String
+  subjectId String
+  mode      TestMode @default(EXAM)
+
+  config Json
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  timeLimitAt DateTime?
+
+  totalQuestions Int?
+  correctCount   Int?
+  scorePercent   Float?
+
+  user        User         @relation(fields: [userId], references: [id])
+  subject     Subject      @relation(fields: [subjectId], references: [id])
+  userAnswers UserAnswer[]
+
+  @@index([userId])
+  @@index([subjectId])
+  @@index([completedAt])
+}
+
+model UserAnswer {
+  id             String   @id @default(cuid())
+  sessionId      String
+  questionId     String
+  selectedOption String?
+  answerText     String?
+  isCorrect      Boolean
+  timeTakenMs    Int?
+  pointsAwarded  Int      @default(0)
+  answeredAt     DateTime @default(now())
+
+  session  TestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
+  @@index([questionId])
+}
+
+// ─── AI Explanation Cache ─────────────────────────────────
+
+model LlmExplanationCache {
+  id         String   @id @default(cuid())
+  questionId String
+  model      String
+  promptHash String
+  prompt     String
+  response   Json
+  hitCount   Int      @default(0)
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, model])
+  @@index([questionId])
+  @@index([expiresAt])
+}
+
+// ─── Reward Points ────────────────────────────────────────
+
+model PointsLedger {
+  id        String          @id @default(cuid())
+  userId    String
+  amount    Int
+  type      PointsEventType
+  refId     String?
+  notes     String?
+  createdAt DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Streak {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  currentStreak    Int       @default(0)
+  longestStreak    Int       @default(0)
+  lastActivityDate DateTime?
+  totalPoints      Int       @default(0)
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Community Explanations ──────────────────────────────
+
+model CommunityExplanation {
+  id               String            @id @default(cuid())
+  questionId       String
+  uploaderId       String
+  type             String
+  storageUrl       String?
+  textContent      String?
+  status           ExplanationStatus @default(PENDING)
+  moderationScore  Float?
+  moderationNotes  String?
+  rejectionReason  String?
+  pointsAwarded    Int               @default(0)
+  createdAt        DateTime          @default(now())
+  verifiedAt       DateTime?
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  uploader User     @relation(fields: [uploaderId], references: [id])
+
+  @@index([questionId])
+  @@index([uploaderId])
+  @@index([status])
+}

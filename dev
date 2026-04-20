@@ -1,0 +1,20 @@
+#!/usr/bin/env zsh
+# Clean restart of the Next.js dev server
+
+export NVM_DIR="$HOME/.nvm"
+[[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
+
+cd "$(dirname "$0")"
+
+echo "→ Stopping any running Next.js dev servers..."
+pkill -f "next dev" 2>/dev/null || true
+pkill -f "next-server" 2>/dev/null || true
+
+# Give processes a moment to exit cleanly
+sleep 1
+
+echo "→ Clearing Next.js cache..."
+rm -rf .next/cache
+
+echo "→ Starting dev server..."
+exec npm run dev
