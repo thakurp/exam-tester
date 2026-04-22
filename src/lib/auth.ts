@@ -26,6 +26,21 @@ export async function getOrCreateDbUser(): Promise<User | null> {
         : "STUDENT";
 
   try {
+    // Handle case where a user with this email already exists under a different clerkId
+    // (e.g. after switching from dev to production Clerk instance)
+    const existingByEmail = await prisma.user.findUnique({ where: { email } });
+    if (existingByEmail && existingByEmail.clerkId !== clerkUser.id) {
+      return prisma.user.update({
+        where: { email },
+        data: {
+          clerkId: clerkUser.id,
+          name: name || null,
+          avatarUrl: clerkUser.imageUrl || null,
+          role,
+        },
+      });
+    }
+
     return await prisma.user.upsert({
       where: { clerkId: clerkUser.id },
       update: {
