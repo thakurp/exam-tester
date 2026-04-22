@@ -327,6 +327,7 @@ const subjectSchema = z.object({
   code: z.string().min(2).max(20),
   description: z.string().optional(),
   country: z.string().optional(),
+  state: z.string().optional(),
   examBoard: z.string().optional(),
   color: z.string().optional(),
   sortOrder: z.coerce.number().default(0),
@@ -346,6 +347,7 @@ export async function createSubject(formData: FormData) {
       code: d.code,
       description: d.description,
       ...(d.country ? { country: d.country } : {}),
+      ...(d.state ? { state: d.state } : {}),
       examBoard: d.examBoard,
       ...(d.color ? { color: d.color } : {}),
       sortOrder: d.sortOrder,
@@ -381,6 +383,131 @@ export async function createTopic(formData: FormData) {
   });
   revalidatePath("/admin/subjects");
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// AI Topic Detection from subject name / URL / pasted content
+// ---------------------------------------------------------------------------
+
+export async function detectTopicsAction(input: {
+  subjectName: string;
+  country: string;
+  state?: string;
+  examBoard?: string;
+  url?: string;
+  pastedContent?: string;
+}): Promise<{ topics: string[] } | { error: string }> {
+  await requireAdmin();
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return { error: "OpenRouter API key not configured" };
+
+  let urlContent = "";
+  if (input.url) {
+    try {
+      const res = await fetch(input.url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; ExamTester/1.0)" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const html = await res.text();
+        // Strip HTML tags, keep text
+        urlContent = html
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 8000); // cap to avoid huge prompts
+      }
+    } catch {
+      // ignore fetch errors — proceed without URL content
+    }
+  }
+
+  const contextParts: string[] = [];
+  if (input.country) contextParts.push(`Country: ${input.country}`);
+  if (input.state) contextParts.push(`State/Region: ${input.state}`);
+  if (input.examBoard) contextParts.push(`Exam Board: ${input.examBoard}`);
+  if (urlContent) contextParts.push(`Curriculum content:\n${urlContent}`);
+  if (input.pastedContent) contextParts.push(`Pasted information:\n${input.pastedContent.slice(0, 6000)}`);
+
+  const prompt = `You are a curriculum expert. Identify the key topics (chapters/units) for the subject "${input.subjectName}" given the context below.
+
+${contextParts.join("\n\n")}
+
+Return ONLY a JSON array of topic name strings (10-25 topics), ordered logically as they would appear in a curriculum. No markdown, no explanation, just the array.
+
+Example: ["Topic 1", "Topic 2", "Topic 3"]`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return { error: `AI API error: ${err}` };
+    }
+
+    const json = await res.json();
+    const content: string = json.choices?.[0]?.message?.content ?? "[]";
+    // Strip possible markdown fences
+    const cleaned = content.replace(/```json|```/g, "").trim();
+    const topics: string[] = JSON.parse(cleaned);
+    if (!Array.isArray(topics)) return { error: "Unexpected AI response format" };
+    return { topics: topics.filter((t) => typeof t === "string" && t.trim()) };
+  } catch (e) {
+    return { error: `Failed to detect topics: ${String(e)}` };
+  }
+}
+
+export async function createSubjectWithTopics(input: {
+  name: string;
+  code: string;
+  description?: string;
+  country: string;
+  state?: string;
+  examBoard?: string;
+  color: string;
+  topics: string[];
+}): Promise<{ subjectId: string } | { error: string }> {
+  await requireAdmin();
+
+  const subject = await prisma.subject.create({
+    data: {
+      name: input.name,
+      code: input.code,
+      description: input.description ?? null,
+      country: input.country,
+      state: input.state ?? null,
+      examBoard: input.examBoard ?? null,
+      color: input.color,
+      isActive: true,
+    },
+  });
+
+  for (let i = 0; i < input.topics.length; i++) {
+    await prisma.topic.create({
+      data: {
+        subjectId: subject.id,
+        name: input.topics[i],
+        sortOrder: i,
+      },
+    });
+  }
+
+  revalidatePath("/admin/subjects");
+  return { subjectId: subject.id };
 }
 
 // ---------------------------------------------------------------------------

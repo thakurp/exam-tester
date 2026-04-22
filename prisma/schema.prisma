@@ -90,6 +90,7 @@ model Subject {
   code        String   @unique
   description String?
   country     String   @default("US")
+  state       String?
   examBoard   String?
   color       String   @default("#6366f1")
   isActive    Boolean  @default(true)
