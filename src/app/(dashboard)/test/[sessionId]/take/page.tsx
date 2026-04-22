@@ -28,7 +28,10 @@ export default async function TakeTestPage({ params }: PageProps) {
 
   const questions = await prisma.question.findMany({
     where: { id: { in: config.questionIds } },
-    include: { options: { orderBy: { sortOrder: "asc" } } },
+    include: {
+      options: { orderBy: { sortOrder: "asc" } },
+      topic: { select: { canonicalImageUrl: true } },
+    },
   });
 
   // Preserve order from config

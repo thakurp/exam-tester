@@ -116,6 +116,8 @@ model Topic {
   subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   questions Question[]
 
+  canonicalImageUrl String?
+
   @@unique([subjectId, name])
   @@index([subjectId])
 }
@@ -135,6 +137,10 @@ model Question {
   source            String?
   imageUrl          String?
   diagramSvg        String?
+  diagramType       String   @default("NONE")   // NONE | GEOMETRY | GRAPH | SCHEMATIC | SCIENCE_COMPLEX
+  diagramHint       String?                      // what to draw — set at question-generation time
+  diagramStatus     String   @default("NONE")   // NONE | PENDING | GENERATED | SKIPPED
+  diagramAttempts   Int      @default(0)
   correctAnswer     String?
   correctAnswerText String?
 

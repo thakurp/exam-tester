@@ -255,7 +255,11 @@ export function ReviewScreen({ session, answers, userId }: ReviewScreenProps) {
                       </Badge>
                     </div>
                     <p className="text-sm font-medium text-gray-900">{q.stem}</p>
-                    <QuestionDiagram svgData={q.diagramSvg} />
+                    <QuestionDiagram
+                      svgData={q.diagramSvg}
+                      diagramType={q.diagramType}
+                      canonicalImageUrl={q.topic.canonicalImageUrl}
+                    />
                   </div>
                 </div>
 

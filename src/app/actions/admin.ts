@@ -160,10 +160,23 @@ export async function uploadQuestionsFromFile(formData: FormData): Promise<{
 
 export async function publishQuestion(questionId: string) {
   await requireAdmin();
+
+  const q = await prisma.question.findUnique({
+    where: { id: questionId },
+    select: { diagramStatus: true, diagramHint: true },
+  });
+
   await prisma.question.update({
     where: { id: questionId },
     data: { status: "PUBLISHED" },
   });
+
+  // Publish gate: generate diagram now (awaited) if still pending
+  if (q?.diagramStatus === "PENDING" && q.diagramHint) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (apiKey) await generateDiagramForQuestion(questionId, apiKey);
+  }
+
   revalidatePath("/admin/questions");
 }
 
@@ -191,13 +204,33 @@ export async function deleteQuestion(questionId: string) {
 
 export async function bulkPublishQuestions(ids: string[]) {
   await requireAdmin();
-  if (ids.length === 0) return { count: 0 };
+  if (ids.length === 0) return { count: 0, diagrams: 0 };
+
   const { count } = await prisma.question.updateMany({
     where: { id: { in: ids }, status: "DRAFT" },
     data: { status: "PUBLISHED" },
   });
+
+  // Publish gate: generate diagrams for any that are still PENDING
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  let diagrams = 0;
+  if (apiKey) {
+    const pending = await prisma.question.findMany({
+      where: { id: { in: ids }, diagramStatus: "PENDING", diagramHint: { not: null } },
+      select: { id: true },
+    });
+
+    // Process in batches of 3 to stay under Vercel's 30s timeout
+    const BATCH = 3;
+    for (let i = 0; i < pending.length; i += BATCH) {
+      const batch = pending.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map((p) => generateDiagramForQuestion(p.id, apiKey)));
+      diagrams += results.filter(Boolean).length;
+    }
+  }
+
   revalidatePath("/admin/questions");
-  return { count };
+  return { count, diagrams };
 }
 
 export async function bulkArchiveQuestions(ids: string[]) {
@@ -544,6 +577,21 @@ export async function generateQuestionsAction(formData: FormData) {
   const difficulties = d.difficulty === "MIXED" ? ["EASY", "MEDIUM", "HARD"] : [d.difficulty];
   const diffText = d.difficulty === "MIXED" ? "a mix of EASY, MEDIUM, and HARD" : d.difficulty;
 
+  // Subject-level context to calibrate diagram defaults
+  const subjectName = topic.subject.name.toLowerCase();
+  const topicName = topic.name.toLowerCase();
+  const isPrimaryLevel =
+    subjectName.includes("naplan") ||
+    subjectName.includes("year 3") ||
+    subjectName.includes("year 4") ||
+    subjectName.includes("year 5") ||
+    subjectName.includes("year 6") ||
+    subjectName.includes("primary");
+
+  const diagramGuidance = isPrimaryLevel
+    ? `IMPORTANT: This is a primary school subject. Lean strongly toward diagramType=GEOMETRY or GRAPH for any question involving shapes, measurement, data, or number concepts — young students rely heavily on visual aids.`
+    : `For biology cell/anatomy topics use diagramType=SCIENCE_COMPLEX. For organic chemistry structures use SCIENCE_COMPLEX. For all others (shapes, graphs, circuits, vectors, food webs, Punnett squares, supply/demand curves) choose GEOMETRY, GRAPH, or SCHEMATIC as appropriate.`;
+
   const prompt = `You are an expert educator creating multiple-choice exam questions for ${topic.subject.name} — specifically the topic "${topic.name}".
 
 Generate exactly ${d.count} high-quality MCQ questions. Each question must have:
@@ -551,7 +599,15 @@ Generate exactly ${d.count} high-quality MCQ questions. Each question must have:
 - 4 options (A, B, C, D) — only one correct
 - Difficulty: ${diffText}
 - A concise explanation for the correct answer
-- needsDiagram: true if the question involves shapes, geometry, graphs, diagrams, coordinates, science figures, or any visual concept — false otherwise
+- diagramType: one of NONE | GEOMETRY | GRAPH | SCHEMATIC | SCIENCE_COMPLEX
+  - NONE: purely text-based, no visual needed
+  - GEOMETRY: 2D/3D shapes, angles, measurement, coordinate geometry
+  - GRAPH: bar charts, line graphs, pie charts, supply/demand curves, velocity-time, scatter plots
+  - SCHEMATIC: flow diagrams, food chains, circuits, force arrows, Punnett squares, number lines, fraction bars, life cycles
+  - SCIENCE_COMPLEX: detailed cell diagrams, human anatomy, molecular structures, organic chemistry — these need sourced images, do NOT attempt SVG
+- diagramHint: if diagramType is not NONE or SCIENCE_COMPLEX, write ONE precise sentence describing exactly what to draw (shapes, labels, values, layout). Leave null otherwise.
+
+${diagramGuidance}
 
 ${d.extraInstructions ? `Additional instructions: ${d.extraInstructions}` : ""}
 
@@ -563,7 +619,8 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
     "correct": "A",
     "difficulty": "EASY",
     "explanation": "...",
-    "needsDiagram": false
+    "diagramType": "GEOMETRY",
+    "diagramHint": "A rhombus with all four sides labeled 5cm, one diagonal drawn and labeled 8cm"
   }
 ]`;
 
@@ -573,7 +630,8 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
     correct: string;
     difficulty: string;
     explanation: string;
-    needsDiagram?: boolean;
+    diagramType?: string;
+    diagramHint?: string;
   }>;
 
   try {
@@ -603,10 +661,15 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
   }
 
   let saved = 0;
+  const svgTypes = new Set(["GEOMETRY", "GRAPH", "SCHEMATIC"]);
+
   for (const q of generated) {
     try {
       const diff = difficulties.includes(q.difficulty) ? q.difficulty : "MEDIUM";
-      const created = await prisma.question.create({
+      const dType = svgTypes.has(q.diagramType ?? "") ? q.diagramType! : q.diagramType === "SCIENCE_COMPLEX" ? "SCIENCE_COMPLEX" : "NONE";
+      const needsSvg = svgTypes.has(dType);
+
+      await prisma.question.create({
         data: {
           stem: q.stem,
           type: "MCQ",
@@ -615,6 +678,9 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
           topicId: topic.id,
           status: "DRAFT",
           source: "AI",
+          diagramType: dType,
+          diagramHint: needsSvg ? (q.diagramHint ?? null) : null,
+          diagramStatus: needsSvg ? "PENDING" : "NONE",
           options: {
             create: ["A", "B", "C", "D"].map((label, i) => ({
               label,
@@ -626,11 +692,6 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
         },
       });
       saved++;
-
-      // Auto-generate diagram for visual questions
-      if (q.needsDiagram) {
-        void generateDiagramForQuestion(created.id, q.stem, apiKey);
-      }
     } catch {
       // skip bad questions
     }
@@ -640,26 +701,50 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
   return { success: true, saved };
 }
 
-// Internal helper — generates and saves a diagram without blocking the response
-async function generateDiagramForQuestion(questionId: string, stem: string, apiKey: string) {
-  const diagramPrompt = `You are a diagram generator for educational exam questions. Create a clean, minimal SVG diagram that visually represents this question scenario.
+// Internal helper — called from publish gate and cron. Awaited by caller.
+export async function generateDiagramForQuestion(questionId: string, apiKey: string): Promise<boolean> {
+  const question = await prisma.question.findUnique({
+    where: { id: questionId },
+    select: { id: true, stem: true, diagramHint: true, diagramType: true, diagramAttempts: true },
+  });
+  if (!question) return false;
 
-Question: "${stem}"
+  // Build a targeted prompt using the diagramHint if available
+  const hintLine = question.diagramHint
+    ? `Diagram description: ${question.diagramHint}`
+    : `Question: "${question.stem}"`;
 
-Rules:
-- Use viewBox="0 0 400 300" and width="400" height="300"
-- Use only: rect, circle, polygon, path, line, text, g, defs
-- No JavaScript, no external references, no event attributes, no xlink
-- Colors: gray (#6b7280), blue (#3b82f6), green (#10b981), red (#ef4444), amber (#f59e0b)
-- Add clear text labels inside the diagram
-- Make shapes large and clearly visible with good spacing
-- For geometry: show the shape with labeled dimensions/angles
-- For graphs: show labeled axes and data points
-- If NO diagram is appropriate for this question, respond with exactly: null
+  const typeInstructions: Record<string, string> = {
+    GEOMETRY: "Draw the geometric shape(s) described with all labeled sides, angles, and dimensions clearly shown. Use precise proportions.",
+    GRAPH: "Draw a clean chart/graph with labeled axes, a title, and all data points or curves described. Include units on axes.",
+    SCHEMATIC: "Draw a clear schematic diagram (flow, circuit, food chain, Punnett square, number line, etc.) with labeled components and arrows where appropriate.",
+  };
+  const typeHint = typeInstructions[question.diagramType ?? ""] ?? "";
 
-Respond ONLY with raw SVG markup starting with <svg, or the word null.`;
+  const diagramPrompt = `You are an SVG diagram generator for educational exam questions.
+
+${hintLine}
+
+Diagram type: ${question.diagramType}
+${typeHint}
+
+SVG rules (STRICT):
+- viewBox="0 0 400 300" width="400" height="300"
+- Allowed elements only: svg, g, rect, circle, ellipse, polygon, polyline, path, line, text, tspan, defs, marker
+- NO script, NO use, NO animate, NO foreignObject, NO xlink, NO event attributes
+- Colors: slate (#64748b), blue (#3b82f6), green (#16a34a), red (#dc2626), amber (#d97706), white (#ffffff)
+- Font: font-family="Arial,sans-serif" — keep text labels short and clearly positioned
+- Leave 20px padding on all sides so nothing clips
+- Shapes must be large and easy to read — this is for students
+
+Respond with ONLY the raw SVG string starting with <svg. No markdown, no explanation.`;
 
   try {
+    await prisma.question.update({
+      where: { id: questionId },
+      data: { diagramAttempts: { increment: 1 } },
+    });
+
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -669,17 +754,22 @@ Respond ONLY with raw SVG markup starting with <svg, or the word null.`;
       body: JSON.stringify({
         model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
         messages: [{ role: "user", content: diagramPrompt }],
-        temperature: 0.3,
+        temperature: 0.2,
       }),
+      signal: AbortSignal.timeout(25_000),
     });
-    if (!res.ok) return;
+    if (!res.ok) return false;
     const json = await res.json();
     const content: string = json.choices?.[0]?.message?.content?.trim() ?? "";
-    if (content === "null" || !isValidSvg(content)) return;
+    if (!isValidSvg(content)) return false;
     const clean = sanitizeSvg(content);
-    await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: clean } });
+    await prisma.question.update({
+      where: { id: questionId },
+      data: { diagramSvg: clean, diagramStatus: "GENERATED" },
+    });
+    return true;
   } catch {
-    // silently skip — diagram generation is best-effort
+    return false;
   }
 }
 
@@ -690,69 +780,44 @@ Respond ONLY with raw SVG markup starting with <svg, or the word null.`;
 export async function generateDiagramAction(questionId: string) {
   await requireAdmin();
 
-  const question = await prisma.question.findUnique({
-    where: { id: questionId },
-    select: { id: true, stem: true },
-  });
-  if (!question) return { error: "Question not found" };
-
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return { error: "OpenRouter API key not configured" };
 
-  const diagramPrompt = `You are a diagram generator for educational exam questions. Create a clean, minimal SVG diagram that visually represents this question scenario.
-
-Question: "${question.stem}"
-
-Rules:
-- Use viewBox="0 0 400 300" and width="400" height="300"
-- Use only: rect, circle, polygon, path, line, text, g, defs
-- No JavaScript, no external references, no event attributes, no xlink
-- Colors: gray (#6b7280), blue (#3b82f6), green (#10b981), red (#ef4444), amber (#f59e0b)
-- Add clear text labels inside the diagram
-- Make shapes large and clearly visible with good spacing
-- For geometry: show the shape with labeled dimensions/angles
-- For graphs: show labeled axes and data points
-- If NO diagram is appropriate for this question, respond with exactly: null
-
-Respond ONLY with raw SVG markup starting with <svg, or the word null.`;
-
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
-        messages: [{ role: "user", content: diagramPrompt }],
-        temperature: 0.3,
-      }),
-    });
-
-    if (!res.ok) return { error: "AI API error" };
-
-    const json = await res.json();
-    const content: string = json.choices?.[0]?.message?.content?.trim() ?? "";
-
-    if (content === "null" || !isValidSvg(content)) {
-      await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: null } });
-      revalidatePath("/admin/questions");
-      return { success: true, hasDiagram: false };
-    }
-
-    const clean = sanitizeSvg(content);
-    await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: clean } });
+  const ok = await generateDiagramForQuestion(questionId, apiKey);
+  if (ok) {
+    const updated = await prisma.question.findUnique({ where: { id: questionId }, select: { diagramSvg: true } });
     revalidatePath("/admin/questions");
-    return { success: true, hasDiagram: true, svg: clean };
-  } catch (e) {
-    return { error: `Failed to generate diagram: ${String(e)}` };
+    return { success: true, hasDiagram: true, svg: updated?.diagramSvg ?? "" };
   }
+
+  revalidatePath("/admin/questions");
+  return { success: true, hasDiagram: false };
 }
 
 export async function clearDiagramAction(questionId: string) {
   await requireAdmin();
-  await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: null } });
+  await prisma.question.update({
+    where: { id: questionId },
+    data: { diagramSvg: null, diagramStatus: "NONE" },
+  });
   revalidatePath("/admin/questions");
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Topic: set canonical image URL (for SCIENCE_COMPLEX topics)
+// ---------------------------------------------------------------------------
+
+export async function updateTopicCanonicalImage(topicId: string, url: string | null) {
+  await requireAdmin();
+  // Only allow https URLs or null (clear)
+  if (url && !/^https:\/\/.+/.test(url)) {
+    return { error: "URL must start with https://" };
+  }
+  await prisma.topic.update({
+    where: { id: topicId },
+    data: { canonicalImageUrl: url },
+  });
+  revalidatePath("/admin/subjects");
   return { success: true };
 }

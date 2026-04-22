@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils";
 import { QuestionDiagram } from "@/components/question/question-diagram";
 import type { Question, McqOption, TestSession, Subject } from "@prisma/client";
 
-type QuestionWithOptions = Question & { options: McqOption[] };
+type QuestionWithOptions = Question & {
+  options: McqOption[];
+  topic: { canonicalImageUrl: string | null };
+};
 type SessionWithSubject = TestSession & { subject: Subject };
 
 interface TestInterfaceProps {
@@ -159,7 +162,11 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
             <p className="text-base sm:text-lg font-medium leading-relaxed text-gray-900 break-words">
               {currentQuestion.stem}
             </p>
-            <QuestionDiagram svgData={currentQuestion.diagramSvg} />
+            <QuestionDiagram
+              svgData={currentQuestion.diagramSvg}
+              diagramType={currentQuestion.diagramType}
+              canonicalImageUrl={currentQuestion.topic.canonicalImageUrl}
+            />
             </div>
           </CardContent>
         </Card>

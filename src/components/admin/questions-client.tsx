@@ -17,6 +17,7 @@ interface Question {
   difficulty: string;
   status: QuestionStatus;
   source: string | null;
+  diagramStatus: string;
   topic: { name: string; subject: { name: string } };
 }
 
@@ -161,6 +162,15 @@ export function QuestionsClient({ questions, status }: Props) {
                 >
                   {q.difficulty}
                 </Badge>
+                {q.diagramStatus === "PENDING" && (
+                  <Badge variant="secondary" className="text-xs text-amber-700 bg-amber-50">diagram pending</Badge>
+                )}
+                {q.diagramStatus === "GENERATED" && (
+                  <Badge variant="secondary" className="text-xs text-green-700 bg-green-50">diagram ✓</Badge>
+                )}
+                {q.diagramStatus === "SKIPPED" && (
+                  <Badge variant="secondary" className="text-xs text-red-700 bg-red-50">diagram failed</Badge>
+                )}
                 {q.source && (
                   <span className="text-xs text-gray-300">{q.source}</span>
                 )}

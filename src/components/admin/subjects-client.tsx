@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { toggleSubjectActive, createTopic } from "@/app/actions/admin";
-import { PlusCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { toggleSubjectActive, createTopic, updateTopicCanonicalImage } from "@/app/actions/admin";
+import { PlusCircle, ChevronDown, ChevronRight, ImageIcon } from "lucide-react";
 import { CreateSubjectWizard } from "@/components/admin/create-subject-wizard";
 import type { Subject, Topic } from "@prisma/client";
 
@@ -27,6 +27,8 @@ export function SubjectsClient({ subjects: initial }: Props) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [addingTopicFor, setAddingTopicFor] = useState<string | null>(null);
   const [newTopicName, setNewTopicName] = useState("");
+  const [editingImageFor, setEditingImageFor] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -53,6 +55,15 @@ export function SubjectsClient({ subjects: initial }: Props) {
     setNewTopicName("");
     setAddingTopicFor(null);
     window.location.reload();
+  }
+
+  async function handleSaveImage(topicId: string) {
+    const url = imageUrl.trim() || null;
+    const result = await updateTopicCanonicalImage(topicId, url);
+    if ("error" in result) { toast.error(result.error); return; }
+    toast.success(url ? "Image URL saved" : "Image URL cleared");
+    setEditingImageFor(null);
+    setImageUrl("");
   }
 
   return (
@@ -103,9 +114,37 @@ export function SubjectsClient({ subjects: initial }: Props) {
             <CardContent className="pt-0 pb-4">
               <div className="pl-6 space-y-2">
                 {subject.topics.map((topic) => (
-                  <div key={topic.id} className="flex items-center gap-2 text-sm text-gray-700 py-1 border-b border-gray-100 last:border-0">
-                    <span className="h-1.5 w-1.5 rounded-full bg-gray-300 flex-shrink-0" />
-                    {topic.name}
+                  <div key={topic.id} className="py-1 border-b border-gray-100 last:border-0">
+                    <div className="flex items-center gap-2 text-sm text-gray-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+                      <span className="flex-1">{topic.name}</span>
+                      <span className="text-xs text-gray-400">{topic._count.questions}q</span>
+                      {topic.canonicalImageUrl && (
+                        <span className="text-xs text-green-600" title={topic.canonicalImageUrl}>✓ img</span>
+                      )}
+                      <button
+                        className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-0.5"
+                        onClick={() => {
+                          setEditingImageFor(editingImageFor === topic.id ? null : topic.id);
+                          setImageUrl(topic.canonicalImageUrl ?? "");
+                        }}
+                        title="Set canonical image URL for SCIENCE_COMPLEX diagrams"
+                      >
+                        <ImageIcon className="h-3 w-3" />
+                      </button>
+                    </div>
+                    {editingImageFor === topic.id && (
+                      <div className="flex gap-2 mt-1 ml-4">
+                        <Input
+                          value={imageUrl}
+                          onChange={(e) => setImageUrl(e.target.value)}
+                          placeholder="https://... (leave blank to clear)"
+                          className="h-7 text-xs"
+                        />
+                        <Button size="sm" className="h-7 text-xs" onClick={() => handleSaveImage(topic.id)}>Save</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingImageFor(null); setImageUrl(""); }}>Cancel</Button>
+                      </div>
+                    )}
                   </div>
                 ))}
 
