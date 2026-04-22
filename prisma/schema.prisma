@@ -134,6 +134,7 @@ model Question {
   explanation       String?
   source            String?
   imageUrl          String?
+  diagramSvg        String?
   correctAnswer     String?
   correctAnswerText String?
 

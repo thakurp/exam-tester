@@ -7,6 +7,7 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { revalidatePath } from "next/cache";
 import { Difficulty, QuestionType } from "@prisma/client";
+import { sanitizeSvg, isValidSvg } from "@/lib/sanitize-svg";
 
 // ---------------------------------------------------------------------------
 // CSV / Excel bulk import
@@ -550,6 +551,7 @@ Generate exactly ${d.count} high-quality MCQ questions. Each question must have:
 - 4 options (A, B, C, D) — only one correct
 - Difficulty: ${diffText}
 - A concise explanation for the correct answer
+- needsDiagram: true if the question involves shapes, geometry, graphs, diagrams, coordinates, science figures, or any visual concept — false otherwise
 
 ${d.extraInstructions ? `Additional instructions: ${d.extraInstructions}` : ""}
 
@@ -560,7 +562,8 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
     "options": {"A": "...", "B": "...", "C": "...", "D": "..."},
     "correct": "A",
     "difficulty": "EASY",
-    "explanation": "..."
+    "explanation": "...",
+    "needsDiagram": false
   }
 ]`;
 
@@ -570,6 +573,7 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
     correct: string;
     difficulty: string;
     explanation: string;
+    needsDiagram?: boolean;
   }>;
 
   try {
@@ -602,7 +606,7 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
   for (const q of generated) {
     try {
       const diff = difficulties.includes(q.difficulty) ? q.difficulty : "MEDIUM";
-      await prisma.question.create({
+      const created = await prisma.question.create({
         data: {
           stem: q.stem,
           type: "MCQ",
@@ -622,6 +626,11 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
         },
       });
       saved++;
+
+      // Auto-generate diagram for visual questions
+      if (q.needsDiagram) {
+        void generateDiagramForQuestion(created.id, q.stem, apiKey);
+      }
     } catch {
       // skip bad questions
     }
@@ -629,4 +638,121 @@ Respond ONLY with a JSON array, no markdown, no explanation outside JSON:
 
   revalidatePath("/admin/questions");
   return { success: true, saved };
+}
+
+// Internal helper — generates and saves a diagram without blocking the response
+async function generateDiagramForQuestion(questionId: string, stem: string, apiKey: string) {
+  const diagramPrompt = `You are a diagram generator for educational exam questions. Create a clean, minimal SVG diagram that visually represents this question scenario.
+
+Question: "${stem}"
+
+Rules:
+- Use viewBox="0 0 400 300" and width="400" height="300"
+- Use only: rect, circle, polygon, path, line, text, g, defs
+- No JavaScript, no external references, no event attributes, no xlink
+- Colors: gray (#6b7280), blue (#3b82f6), green (#10b981), red (#ef4444), amber (#f59e0b)
+- Add clear text labels inside the diagram
+- Make shapes large and clearly visible with good spacing
+- For geometry: show the shape with labeled dimensions/angles
+- For graphs: show labeled axes and data points
+- If NO diagram is appropriate for this question, respond with exactly: null
+
+Respond ONLY with raw SVG markup starting with <svg, or the word null.`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
+        messages: [{ role: "user", content: diagramPrompt }],
+        temperature: 0.3,
+      }),
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    const content: string = json.choices?.[0]?.message?.content?.trim() ?? "";
+    if (content === "null" || !isValidSvg(content)) return;
+    const clean = sanitizeSvg(content);
+    await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: clean } });
+  } catch {
+    // silently skip — diagram generation is best-effort
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Admin: Generate diagram for a single question (on-demand)
+// ---------------------------------------------------------------------------
+
+export async function generateDiagramAction(questionId: string) {
+  await requireAdmin();
+
+  const question = await prisma.question.findUnique({
+    where: { id: questionId },
+    select: { id: true, stem: true },
+  });
+  if (!question) return { error: "Question not found" };
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return { error: "OpenRouter API key not configured" };
+
+  const diagramPrompt = `You are a diagram generator for educational exam questions. Create a clean, minimal SVG diagram that visually represents this question scenario.
+
+Question: "${question.stem}"
+
+Rules:
+- Use viewBox="0 0 400 300" and width="400" height="300"
+- Use only: rect, circle, polygon, path, line, text, g, defs
+- No JavaScript, no external references, no event attributes, no xlink
+- Colors: gray (#6b7280), blue (#3b82f6), green (#10b981), red (#ef4444), amber (#f59e0b)
+- Add clear text labels inside the diagram
+- Make shapes large and clearly visible with good spacing
+- For geometry: show the shape with labeled dimensions/angles
+- For graphs: show labeled axes and data points
+- If NO diagram is appropriate for this question, respond with exactly: null
+
+Respond ONLY with raw SVG markup starting with <svg, or the word null.`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
+        messages: [{ role: "user", content: diagramPrompt }],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) return { error: "AI API error" };
+
+    const json = await res.json();
+    const content: string = json.choices?.[0]?.message?.content?.trim() ?? "";
+
+    if (content === "null" || !isValidSvg(content)) {
+      await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: null } });
+      revalidatePath("/admin/questions");
+      return { success: true, hasDiagram: false };
+    }
+
+    const clean = sanitizeSvg(content);
+    await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: clean } });
+    revalidatePath("/admin/questions");
+    return { success: true, hasDiagram: true, svg: clean };
+  } catch (e) {
+    return { error: `Failed to generate diagram: ${String(e)}` };
+  }
+}
+
+export async function clearDiagramAction(questionId: string) {
+  await requireAdmin();
+  await prisma.question.update({ where: { id: questionId }, data: { diagramSvg: null } });
+  revalidatePath("/admin/questions");
+  return { success: true };
 }

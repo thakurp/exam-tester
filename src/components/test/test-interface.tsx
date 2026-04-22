@@ -10,6 +10,7 @@ import { submitAnswer, completeTestSession } from "@/app/actions/test";
 import { toast } from "sonner";
 import { Clock, ChevronRight, ChevronLeft, CheckSquare, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { QuestionDiagram } from "@/components/question/question-diagram";
 import type { Question, McqOption, TestSession, Subject } from "@prisma/client";
 
 type QuestionWithOptions = Question & { options: McqOption[] };
@@ -154,9 +155,12 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
                 {currentQuestion.difficulty.charAt(0) + currentQuestion.difficulty.slice(1).toLowerCase()}
               </Badge>
             </div>
+            <div>
             <p className="text-base sm:text-lg font-medium leading-relaxed text-gray-900 break-words">
               {currentQuestion.stem}
             </p>
+            <QuestionDiagram svgData={currentQuestion.diagramSvg} />
+            </div>
           </CardContent>
         </Card>
 

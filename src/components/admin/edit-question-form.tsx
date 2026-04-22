@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { updateQuestion } from "@/app/actions/admin";
+import { updateQuestion, generateDiagramAction, clearDiagramAction } from "@/app/actions/admin";
+import { QuestionDiagram } from "@/components/question/question-diagram";
+import { ImageIcon, Loader2, Trash2 } from "lucide-react";
 import type { Question, McqOption, Topic, Subject } from "@prisma/client";
 
 type QuestionWithRelations = Question & {
@@ -27,10 +29,33 @@ export function EditQuestionForm({ question, subjects }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [subjectId, setSubjectId] = useState(question.topic.subjectId);
+  const [diagramSvg, setDiagramSvg] = useState<string | null>(question.diagramSvg ?? null);
+  const [generatingDiagram, setGeneratingDiagram] = useState(false);
 
   const currentSubject = subjects.find((s) => s.id === subjectId);
   const optionMap = Object.fromEntries(question.options.map((o) => [o.label, o.text]));
   const correctOption = question.options.find((o) => o.isCorrect)?.label ?? "A";
+
+  async function handleGenerateDiagram() {
+    setGeneratingDiagram(true);
+    const result = await generateDiagramAction(question.id);
+    setGeneratingDiagram(false);
+    if (result?.error) {
+      toast.error(result.error);
+    } else if (result?.hasDiagram && result.svg) {
+      setDiagramSvg(result.svg);
+      toast.success("Diagram generated");
+    } else {
+      setDiagramSvg(null);
+      toast.info("No diagram needed for this question");
+    }
+  }
+
+  async function handleClearDiagram() {
+    await clearDiagramAction(question.id);
+    setDiagramSvg(null);
+    toast.success("Diagram removed");
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -153,6 +178,36 @@ export function EditQuestionForm({ question, subjects }: Props) {
           rows={3}
           placeholder="Explain why the correct answer is right..."
         />
+      </div>
+
+      {/* Diagram */}
+      <div className="space-y-2">
+        <Label>Diagram</Label>
+        {diagramSvg && (
+          <div className="rounded-xl border border-gray-100 bg-white p-4 max-h-56 overflow-hidden flex items-center justify-center">
+            <QuestionDiagram svgData={diagramSvg} />
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleGenerateDiagram}
+            disabled={generatingDiagram}
+          >
+            {generatingDiagram ? (
+              <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Generating…</>
+            ) : (
+              <><ImageIcon className="h-4 w-4 mr-1.5" /> {diagramSvg ? "Regenerate Diagram" : "Generate Diagram"}</>
+            )}
+          </Button>
+          {diagramSvg && (
+            <Button type="button" variant="ghost" size="sm" onClick={handleClearDiagram}>
+              <Trash2 className="h-4 w-4 mr-1.5" /> Remove
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-3 pt-2">

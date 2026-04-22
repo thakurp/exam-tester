@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { CheckCircle2, XCircle, Brain, Loader2, ChevronDown, ChevronUp, ArrowLeft, RotateCcw } from "lucide-react";
 import type { Question, McqOption, UserAnswer, TestSession, Subject, Topic } from "@prisma/client";
+import { QuestionDiagram } from "@/components/question/question-diagram";
 
 type FullAnswer = UserAnswer & {
   question: Question & { options: McqOption[]; topic: Topic };
@@ -254,6 +255,7 @@ export function ReviewScreen({ session, answers, userId }: ReviewScreenProps) {
                       </Badge>
                     </div>
                     <p className="text-sm font-medium text-gray-900">{q.stem}</p>
+                    <QuestionDiagram svgData={q.diagramSvg} />
                   </div>
                 </div>
 
