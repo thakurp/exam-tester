@@ -36,7 +36,7 @@ export async function getOrCreateDbUser(): Promise<User | null> {
           clerkId: clerkUser.id,
           name: name || null,
           avatarUrl: clerkUser.imageUrl || null,
-          role,
+          // preserve existing DB role — don't overwrite with Clerk metadata
         },
       });
     }
@@ -47,14 +47,14 @@ export async function getOrCreateDbUser(): Promise<User | null> {
         email,
         name: name || null,
         avatarUrl: clerkUser.imageUrl || null,
-        role,
+        // preserve existing DB role on update — don't overwrite with Clerk metadata
       },
       create: {
         clerkId: clerkUser.id,
         email,
         name: name || null,
         avatarUrl: clerkUser.imageUrl || null,
-        role,
+        role, // only set role on first creation
       },
     });
   } catch (err) {
