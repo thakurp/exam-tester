@@ -162,14 +162,26 @@ export function QuestionsClient({ questions, status }: Props) {
                 >
                   {q.difficulty}
                 </Badge>
+                {q.diagramType !== "NONE" && (
+                  <Badge variant="secondary" className="text-xs text-indigo-700 bg-indigo-50">
+                    {q.diagramType === "GEOMETRY" ? "geometry"
+                      : q.diagramType === "GRAPH" ? "graph"
+                      : q.diagramType === "SCHEMATIC" ? "schematic"
+                      : q.diagramType === "SCIENCE_COMPLEX" ? "complex image"
+                      : q.diagramType.toLowerCase()}
+                  </Badge>
+                )}
                 {q.diagramStatus === "PENDING" && (
-                  <Badge variant="secondary" className="text-xs text-amber-700 bg-amber-50">diagram pending</Badge>
+                  <Badge variant="secondary" className="text-xs text-amber-700 bg-amber-50">svg pending</Badge>
                 )}
                 {q.diagramStatus === "GENERATED" && (
                   <Badge variant="secondary" className="text-xs text-green-700 bg-green-50">diagram ✓</Badge>
                 )}
-                {q.diagramStatus === "SKIPPED" && (
-                  <Badge variant="secondary" className="text-xs text-red-700 bg-red-50">diagram failed</Badge>
+                {q.diagramStatus === "SKIPPED" && q.diagramType !== "NONE" && (
+                  <Badge variant="secondary" className="text-xs text-red-700 bg-red-50">svg failed</Badge>
+                )}
+                {q.diagramStatus === "SKIPPED" && q.diagramType === "NONE" && (
+                  <Badge variant="secondary" className="text-xs text-gray-500 bg-gray-100">no diagram</Badge>
                 )}
                 {q.source && (
                   <span className="text-xs text-gray-300">{q.source}</span>

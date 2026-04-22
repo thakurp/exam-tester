@@ -919,7 +919,8 @@ Respond ONLY with a JSON array (no markdown fences):
       data: {
         diagramType: c.diagramType,
         diagramHint: needsSvg ? c.diagramHint : null,
-        diagramStatus: needsSvg ? "PENDING" : "NONE",
+        // SKIPPED = examined by AI, no diagram needed; PENDING = needs SVG generation
+        diagramStatus: needsSvg ? "PENDING" : "SKIPPED",
       },
     });
     if (needsSvg) pendingIds.push(c.id);

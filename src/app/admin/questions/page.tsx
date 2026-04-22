@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import type { QuestionStatus } from "@prisma/client";
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; subject?: string; topic?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; subject?: string; topic?: string; page?: string; diagramFilter?: string }>;
 }
 
 const PAGE_SIZE = 20;
@@ -21,6 +21,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
   const page = Math.max(1, parseInt(sp.page ?? "1"));
   const selectedSubject = sp.subject ?? null;
   const selectedTopic = sp.topic ?? null;
+  const diagramFilter = sp.diagramFilter ?? null; // null | "classified" | "unclassified"
 
   // Build URL param helper (preserves all active filters)
   function buildUrl(overrides: Record<string, string | null>) {
@@ -28,6 +29,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       status,
       ...(selectedSubject ? { subject: selectedSubject } : {}),
       ...(selectedTopic ? { topic: selectedTopic } : {}),
+      ...(diagramFilter ? { diagramFilter } : {}),
       ...Object.fromEntries(
         Object.entries(overrides).filter(([, v]) => v !== null) as [string, string][]
       ),
@@ -37,6 +39,14 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
     return "/admin/questions?" + new URLSearchParams(params).toString();
   }
 
+  // Diagram classification filter
+  const diagramWhere =
+    diagramFilter === "classified"
+      ? { NOT: { diagramStatus: "NONE" } }
+      : diagramFilter === "unclassified"
+        ? { diagramType: "NONE", diagramStatus: "NONE" }
+        : {};
+
   // Question filter — subject/topic are via topic relation, not direct fields
   const where = {
     status,
@@ -45,6 +55,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       : selectedSubject
         ? { topic: { subjectId: selectedSubject } }
         : {}),
+    ...diagramWhere,
   };
 
   const [questions, total, unclassifiedCount, subjects, topicCounts] =
@@ -123,6 +134,34 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
           </Link>
         ))}
       </div>
+
+      {/* Diagram classification filter (only on Published tab) */}
+      {status === "PUBLISHED" && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-gray-400 mr-1 shrink-0">Diagram:</span>
+          <Link href={buildUrl({ diagramFilter: null, page: null })}>
+            <Badge variant={!diagramFilter ? "default" : "outline"} className="cursor-pointer px-3 py-1 text-xs">
+              All
+            </Badge>
+          </Link>
+          <Link href={buildUrl({ diagramFilter: "classified", page: null })}>
+            <Badge
+              variant={diagramFilter === "classified" ? "default" : "outline"}
+              className={cn("cursor-pointer px-3 py-1 text-xs", diagramFilter === "classified" && "bg-green-600 hover:bg-green-700")}
+            >
+              Classified
+            </Badge>
+          </Link>
+          <Link href={buildUrl({ diagramFilter: "unclassified", page: null })}>
+            <Badge
+              variant={diagramFilter === "unclassified" ? "default" : "outline"}
+              className={cn("cursor-pointer px-3 py-1 text-xs", diagramFilter === "unclassified" && "bg-amber-600 hover:bg-amber-700")}
+            >
+              Not Classified
+            </Badge>
+          </Link>
+        </div>
+      )}
 
       {/* Subject filter row */}
       <div className="flex flex-wrap gap-2 items-center">
