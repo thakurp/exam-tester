@@ -2,9 +2,8 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
-import { QuestionActions } from "@/components/admin/question-actions";
+import { QuestionsClient } from "@/components/admin/questions-client";
 import { PlusCircle } from "lucide-react";
 import type { QuestionStatus } from "@prisma/client";
 
@@ -68,42 +67,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       </div>
 
       {/* Questions table */}
-      <div className="space-y-2">
-        {questions.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              No {status.toLowerCase()} questions found.
-            </CardContent>
-          </Card>
-        ) : (
-          questions.map((q) => (
-            <Card key={q.id}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{q.stem}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-gray-400">{q.topic.subject.name} › {q.topic.name}</span>
-                    <Badge
-                      variant="secondary"
-                      className={`text-xs ${
-                        q.difficulty === "EASY"
-                          ? "text-green-600 bg-green-50"
-                          : q.difficulty === "MEDIUM"
-                            ? "text-amber-600 bg-amber-50"
-                            : "text-red-600 bg-red-50"
-                      }`}
-                    >
-                      {q.difficulty}
-                    </Badge>
-                    <span className="text-xs text-gray-300">{q.source}</span>
-                  </div>
-                </div>
-                <QuestionActions questionId={q.id} currentStatus={q.status} />
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+      <QuestionsClient questions={questions} status={status} />
 
       {/* Pagination */}
       {totalPages > 1 && (

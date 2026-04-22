@@ -188,6 +188,28 @@ export async function deleteQuestion(questionId: string) {
   revalidatePath("/admin/questions");
 }
 
+export async function bulkPublishQuestions(ids: string[]) {
+  await requireAdmin();
+  if (ids.length === 0) return { count: 0 };
+  const { count } = await prisma.question.updateMany({
+    where: { id: { in: ids }, status: "DRAFT" },
+    data: { status: "PUBLISHED" },
+  });
+  revalidatePath("/admin/questions");
+  return { count };
+}
+
+export async function bulkArchiveQuestions(ids: string[]) {
+  await requireAdmin();
+  if (ids.length === 0) return { count: 0 };
+  const { count } = await prisma.question.updateMany({
+    where: { id: { in: ids }, status: { not: "ARCHIVED" } },
+    data: { status: "ARCHIVED" },
+  });
+  revalidatePath("/admin/questions");
+  return { count };
+}
+
 // ---------------------------------------------------------------------------
 // Manual question creation
 // ---------------------------------------------------------------------------
