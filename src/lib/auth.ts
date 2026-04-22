@@ -25,22 +25,27 @@ export async function getOrCreateDbUser(): Promise<User | null> {
         ? "PARENT"
         : "STUDENT";
 
-  return prisma.user.upsert({
-    where: { clerkId: clerkUser.id },
-    update: {
-      email,
-      name: name || null,
-      avatarUrl: clerkUser.imageUrl || null,
-      role,
-    },
-    create: {
-      clerkId: clerkUser.id,
-      email,
-      name: name || null,
-      avatarUrl: clerkUser.imageUrl || null,
-      role,
-    },
-  });
+  try {
+    return await prisma.user.upsert({
+      where: { clerkId: clerkUser.id },
+      update: {
+        email,
+        name: name || null,
+        avatarUrl: clerkUser.imageUrl || null,
+        role,
+      },
+      create: {
+        clerkId: clerkUser.id,
+        email,
+        name: name || null,
+        avatarUrl: clerkUser.imageUrl || null,
+        role,
+      },
+    });
+  } catch (err) {
+    console.error("[getOrCreateDbUser] DB error:", err);
+    throw err;
+  }
 }
 
 export async function requireAdmin(): Promise<User> {
