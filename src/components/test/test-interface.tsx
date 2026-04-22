@@ -113,18 +113,18 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-700">{session.subject.name}</p>
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-700 truncate">{session.subject.name}</p>
             <Progress value={(answeredCount / totalQuestions) * 100} className="h-1.5 mt-1" />
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-gray-500 shrink-0">
             {answeredCount}/{totalQuestions}
           </div>
           {secondsLeft !== null && (
             <div
               className={cn(
-                "flex items-center gap-1.5 text-sm font-mono font-medium px-3 py-1 rounded-full",
+                "flex items-center gap-1.5 text-sm font-mono font-medium px-3 py-1 rounded-full shrink-0",
                 secondsLeft < 60 ? "text-red-600 bg-red-50" : "text-gray-700 bg-gray-100"
               )}
             >
@@ -139,7 +139,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
       <div className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 space-y-4">
         {/* Question card */}
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center gap-2 mb-4">
               <span className="text-sm text-gray-400">
                 Question {currentIndex + 1} of {totalQuestions}
@@ -154,7 +154,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
                 {currentQuestion.difficulty.charAt(0) + currentQuestion.difficulty.slice(1).toLowerCase()}
               </Badge>
             </div>
-            <p className="text-lg font-medium leading-relaxed text-gray-900">
+            <p className="text-base sm:text-lg font-medium leading-relaxed text-gray-900 break-words">
               {currentQuestion.stem}
             </p>
           </CardContent>
@@ -170,7 +170,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
                 onClick={() => handleSelect(option.label)}
                 disabled={!!answers[currentQuestion.id] || submitting}
                 className={cn(
-                  "w-full text-left px-5 py-4 rounded-xl border-2 transition-all text-sm font-medium",
+                  "w-full text-left px-4 sm:px-5 py-3 sm:py-4 min-h-[52px] rounded-xl border-2 transition-all text-sm font-medium break-words touch-manipulation",
                   selected
                     ? "border-indigo-500 bg-indigo-50 text-indigo-900"
                     : answers[currentQuestion.id]
@@ -186,7 +186,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
         </div>
 
         {/* Navigation */}
-        <div className="flex justify-between pt-2">
+        <div className="flex flex-col-reverse sm:flex-row justify-between gap-2 pt-2">
           <Button
             variant="ghost"
             onClick={() => {
@@ -194,6 +194,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
               setQuestionStartTime(Date.now());
             }}
             disabled={currentIndex === 0}
+            className="touch-manipulation"
           >
             <ChevronLeft className="h-4 w-4 mr-1" /> Previous
           </Button>
@@ -205,6 +206,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
                 setCurrentIndex((i) => i + 1);
                 setQuestionStartTime(Date.now());
               }}
+              className="touch-manipulation"
             >
               Next <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
@@ -212,7 +214,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
             <Button
               onClick={handleComplete}
               disabled={completing}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto touch-manipulation"
             >
               {completing ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Finishing...</>
@@ -235,7 +237,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
                   setQuestionStartTime(Date.now());
                 }}
                 className={cn(
-                  "h-7 w-7 rounded text-xs font-medium transition-all",
+                  "h-9 w-9 rounded text-xs font-medium transition-all touch-manipulation",
                   i === currentIndex
                     ? "bg-indigo-600 text-white"
                     : answers[q.id]

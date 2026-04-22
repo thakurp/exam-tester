@@ -45,7 +45,7 @@ export default async function LeaderboardPage() {
             return (
               <div
                 key={entry.id}
-                className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50"
+                className="flex items-center gap-3 px-3 sm:px-6 py-3 hover:bg-gray-50"
               >
                 <div className="w-8 text-center font-bold text-gray-500 text-sm">
                   {medal ?? `#${rank}`}
@@ -62,9 +62,9 @@ export default async function LeaderboardPage() {
                   <p className="font-medium text-sm truncate">{displayName}</p>
                 </div>
 
-                <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-2 sm:gap-3 text-sm">
                   {entry.currentStreak > 0 && (
-                    <span className="flex items-center gap-1 text-orange-500 text-xs">
+                    <span className="hidden sm:flex items-center gap-1 text-orange-500 text-xs">
                       <Flame className="h-3.5 w-3.5" />
                       {entry.currentStreak}d
                     </span>

@@ -57,11 +57,11 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+              <div className="h-10 w-10 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
                 <BookOpen className="h-5 w-5 text-indigo-600" />
               </div>
               <div>
@@ -73,8 +73,8 @@ export default async function DashboardPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+              <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center shrink-0">
                 <Target className="h-5 w-5 text-green-600" />
               </div>
               <div>
@@ -86,8 +86,8 @@ export default async function DashboardPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-orange-100 rounded-lg flex items-center justify-center">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+              <div className="h-10 w-10 bg-orange-100 rounded-lg flex items-center justify-center shrink-0">
                 <Flame className="h-5 w-5 text-orange-500" />
               </div>
               <div>
@@ -99,8 +99,8 @@ export default async function DashboardPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+              <div className="h-10 w-10 bg-yellow-100 rounded-lg flex items-center justify-center shrink-0">
                 <Trophy className="h-5 w-5 text-yellow-600" />
               </div>
               <div>
@@ -160,7 +160,7 @@ export default async function DashboardPage() {
           <div className="space-y-3">
             {recentSessions.map((session) => (
               <Card key={session.id}>
-                <CardContent className="p-4 flex items-center gap-4">
+                <CardContent className="p-4 flex items-center gap-3">
                   <div
                     className="h-10 w-10 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
                     style={{ backgroundColor: session.subject.color }}
@@ -179,9 +179,9 @@ export default async function DashboardPage() {
                   </div>
                   <Progress
                     value={session.scorePercent ?? 0}
-                    className="w-20 h-2"
+                    className="w-16 h-2 hidden sm:block"
                   />
-                  <Button size="sm" variant="ghost" asChild>
+                  <Button size="sm" variant="ghost" asChild className="shrink-0">
                     <Link href={`/test/${session.id}/review`}>Review</Link>
                   </Button>
                 </CardContent>

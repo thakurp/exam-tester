@@ -181,7 +181,7 @@ export function ReviewScreen({ session, answers, userId }: ReviewScreenProps) {
               </div>
             </div>
           </div>
-          <div className="flex gap-3 mt-6">
+          <div className="flex flex-col sm:flex-row gap-2 mt-6">
             <Button variant="outline" size="sm" asChild>
               <Link href="/dashboard">
                 <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
@@ -197,7 +197,7 @@ export function ReviewScreen({ session, answers, userId }: ReviewScreenProps) {
       </Card>
 
       {/* Filter tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         {(["all", "correct", "incorrect"] as const).map((f) => (
           <button
             key={f}
@@ -266,7 +266,7 @@ export function ReviewScreen({ session, answers, userId }: ReviewScreenProps) {
                       <div
                         key={opt.id}
                         className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg text-sm",
+                          "flex items-start gap-2 px-3 py-2 rounded-lg text-sm",
                           isCorrectOpt
                             ? "bg-green-50 text-green-800 font-medium"
                             : isSelected && !isCorrectOpt
@@ -274,10 +274,10 @@ export function ReviewScreen({ session, answers, userId }: ReviewScreenProps) {
                               : "text-gray-600"
                         )}
                       >
-                        <span className="font-bold w-4">{opt.label}.</span>
-                        <span className="flex-1">{opt.text}</span>
-                        {isCorrectOpt && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
-                        {isSelected && !isCorrectOpt && <XCircle className="h-3.5 w-3.5 text-red-400" />}
+                        <span className="font-bold w-4 shrink-0 mt-0.5">{opt.label}.</span>
+                        <span className="flex-1 break-words">{opt.text}</span>
+                        {isCorrectOpt && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />}
+                        {isSelected && !isCorrectOpt && <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0 mt-0.5" />}
                       </div>
                     );
                   })}

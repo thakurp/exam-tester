@@ -86,7 +86,7 @@ export function TestConfigForm({ subjects, initialSubject, userId }: TestConfigF
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {subjects.map((s) => (
               <button
                 key={s.id}

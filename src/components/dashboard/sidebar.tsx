@@ -37,7 +37,7 @@ export function DashboardSidebar({ user }: SidebarProps) {
   const nav = user.role === "ADMIN" ? adminNav : studentNav;
 
   return (
-    <div className="w-64 flex-shrink-0 bg-white border-r flex flex-col">
+    <div className="hidden md:flex w-64 flex-shrink-0 bg-white border-r flex-col">
       {/* Logo */}
       <div className="h-16 flex items-center gap-2 px-4 border-b">
         <BookOpen className="h-6 w-6 text-indigo-600" />
