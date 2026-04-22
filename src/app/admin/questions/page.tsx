@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import type { QuestionStatus } from "@prisma/client";
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; subject?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; subject?: string; topic?: string; page?: string }>;
 }
 
 const PAGE_SIZE = 20;
@@ -20,11 +20,31 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
   const status = (sp.status?.toUpperCase() ?? "PUBLISHED") as QuestionStatus;
   const page = Math.max(1, parseInt(sp.page ?? "1"));
   const selectedSubject = sp.subject ?? null;
+  const selectedTopic = sp.topic ?? null;
 
-  // Question filter — subject is via topic relation, not a direct field
+  // Build URL param helper (preserves all active filters)
+  function buildUrl(overrides: Record<string, string | null>) {
+    const params: Record<string, string> = {
+      status,
+      ...(selectedSubject ? { subject: selectedSubject } : {}),
+      ...(selectedTopic ? { topic: selectedTopic } : {}),
+      ...Object.fromEntries(
+        Object.entries(overrides).filter(([, v]) => v !== null) as [string, string][]
+      ),
+    };
+    // Remove keys explicitly set to null
+    Object.entries(overrides).forEach(([k, v]) => { if (v === null) delete params[k]; });
+    return "/admin/questions?" + new URLSearchParams(params).toString();
+  }
+
+  // Question filter — subject/topic are via topic relation, not direct fields
   const where = {
     status,
-    ...(selectedSubject ? { topic: { subjectId: selectedSubject } } : {}),
+    ...(selectedTopic
+      ? { topicId: selectedTopic }
+      : selectedSubject
+        ? { topic: { subjectId: selectedSubject } }
+        : {}),
   };
 
   const [questions, total, unclassifiedCount, subjects, topicCounts] =
@@ -93,10 +113,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       {/* Status filter tabs */}
       <div className="flex gap-2">
         {statusOptions.map((s) => (
-          <Link
-            key={s}
-            href={`/admin/questions?status=${s}${selectedSubject ? `&subject=${selectedSubject}` : ""}`}
-          >
+          <Link key={s} href={buildUrl({ status: s, page: null })}>
             <Badge
               variant={status === s ? "default" : "outline"}
               className="cursor-pointer px-3 py-1 text-xs"
@@ -110,7 +127,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       {/* Subject filter row */}
       <div className="flex flex-wrap gap-2 items-center">
         <span className="text-xs text-gray-400 mr-1 shrink-0">Subject:</span>
-        <Link href={`/admin/questions?status=${status}`}>
+        <Link href={buildUrl({ subject: null, topic: null, page: null })}>
           <Badge
             variant={!selectedSubject ? "default" : "outline"}
             className="cursor-pointer px-3 py-1 text-xs"
@@ -119,7 +136,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
           </Badge>
         </Link>
         {subjects.map((s) => (
-          <Link key={s.id} href={`/admin/questions?status=${status}&subject=${s.id}`}>
+          <Link key={s.id} href={buildUrl({ subject: s.id, topic: null, page: null })}>
             <Badge
               variant={selectedSubject === s.id ? "default" : "outline"}
               className={cn(
@@ -137,27 +154,41 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       {topicCounts && topicCounts.length > 0 && (
         <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Topics in this subject ({status.toLowerCase()})
+            Topics in this subject ({status.toLowerCase()}) — click to filter
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            {topicCounts.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between bg-white rounded-lg border border-gray-100 px-3 py-2 text-sm"
-              >
-                <span className="text-gray-700 truncate pr-2" title={t.name}>
-                  {t.name}
-                </span>
-                <span
+            {topicCounts.map((t) => {
+              const isSelected = selectedTopic === t.id;
+              return (
+                <Link
+                  key={t.id}
+                  href={
+                    isSelected
+                      ? buildUrl({ topic: null, page: null })
+                      : buildUrl({ topic: t.id, page: null })
+                  }
+                  title={t.name}
                   className={cn(
-                    "font-semibold shrink-0 tabular-nums",
-                    t._count.questions === 0 ? "text-gray-300" : "text-indigo-600"
+                    "flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors",
+                    isSelected
+                      ? "bg-indigo-600 border-indigo-600 text-white"
+                      : t._count.questions === 0
+                        ? "bg-white border-gray-100 text-gray-400 cursor-default pointer-events-none"
+                        : "bg-white border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/50 cursor-pointer"
                   )}
                 >
-                  {t._count.questions}
-                </span>
-              </div>
-            ))}
+                  <span className="truncate pr-2">{t.name}</span>
+                  <span
+                    className={cn(
+                      "font-semibold shrink-0 tabular-nums text-xs",
+                      isSelected ? "text-white" : t._count.questions === 0 ? "text-gray-300" : "text-indigo-600"
+                    )}
+                  >
+                    {t._count.questions}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}
@@ -169,10 +200,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       {totalPages > 1 && (
         <div className="flex justify-center gap-2">
           {Array.from({ length: totalPages }, (_, i) => (
-            <Link
-              key={i + 1}
-              href={`/admin/questions?status=${status}${selectedSubject ? `&subject=${selectedSubject}` : ""}&page=${i + 1}`}
-            >
+            <Link key={i + 1} href={buildUrl({ page: String(i + 1) })}>
               <Badge
                 variant={page === i + 1 ? "default" : "outline"}
                 className="cursor-pointer"
