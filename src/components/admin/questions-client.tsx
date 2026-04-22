@@ -17,6 +17,7 @@ interface Question {
   difficulty: string;
   status: QuestionStatus;
   source: string | null;
+  diagramType: string;
   diagramStatus: string;
   topic: { name: string; subject: { name: string } };
 }
