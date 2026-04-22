@@ -1,18 +1,22 @@
-import DOMPurify from "isomorphic-dompurify";
-
 /**
- * Sanitize AI-generated SVG before saving to DB or rendering.
- * Strips scripts, event handlers, and external references.
+ * Server-side SVG sanitizer — no DOM required, works in any Node.js environment.
+ * Strips scripts, event handlers, javascript: hrefs, and external references.
+ * The SVG source is always Claude-generated so this is a defence-in-depth measure.
  */
 export function sanitizeSvg(raw: string): string {
-  return DOMPurify.sanitize(raw, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-    FORBID_TAGS: ["script", "use", "animate", "set"],
-    FORBID_ATTR: [
-      "onclick", "onload", "onerror", "onmouseover", "onfocus",
-      "onblur", "onmouseout", "onkeydown", "onkeyup",
-    ],
-  });
+  return raw
+    // Remove <script> blocks
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    // Remove event-handler attributes (onclick, onload, onerror, …)
+    .replace(/\s+on\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\s+on\w+\s*=\s*'[^']*'/gi, "")
+    // Remove javascript: URIs in href / xlink:href
+    .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, "")
+    .replace(/xlink:href\s*=\s*["'][^"']*["']/gi, "")
+    // Remove <use> elements (can reference external SVG symbols)
+    .replace(/<use[\s\S]*?\/?>|<use[\s\S]*?<\/use>/gi, "")
+    // Remove external http references in any attribute
+    .replace(/=\s*["']https?:\/\/[^"']*["']/gi, '=""');
 }
 
 export function isValidSvg(input: string): boolean {
