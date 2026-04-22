@@ -9,9 +9,9 @@ export async function getCurrentDbUser(): Promise<User | null> {
   return prisma.user.findUnique({ where: { clerkId: userId } });
 }
 
-export async function getOrCreateDbUser(): Promise<User> {
+export async function getOrCreateDbUser(): Promise<User | null> {
   const clerkUser = await currentUser();
-  if (!clerkUser) throw new Error("Not authenticated");
+  if (!clerkUser) return null;
 
   const email =
     clerkUser.emailAddresses[0]?.emailAddress ?? "";

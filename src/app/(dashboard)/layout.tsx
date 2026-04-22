@@ -12,6 +12,7 @@ export default async function DashboardLayout({
   if (!userId) redirect("/sign-in");
 
   const user = await getOrCreateDbUser();
+  if (!user) redirect("/sign-in");
 
   return (
     <div className="flex h-screen bg-gray-50">
