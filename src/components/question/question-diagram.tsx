@@ -30,6 +30,16 @@ export function QuestionDiagram({ svgData, canonicalImageUrl, diagramType }: Pro
       ],
     });
     ref.current.innerHTML = clean;
+    // Make the injected SVG scale to the container width on all screen sizes.
+    // The SVG is generated with viewBox="0 0 400 300" so overriding width/height
+    // via style (not attribute) is the most cross-browser compatible approach.
+    const svgEl = ref.current.querySelector("svg");
+    if (svgEl) {
+      svgEl.style.width = "100%";
+      svgEl.style.height = "auto";
+      svgEl.style.display = "block";
+      svgEl.style.maxHeight = "260px";
+    }
   }, [svgData]);
 
   // SVG diagram takes priority
@@ -37,8 +47,7 @@ export function QuestionDiagram({ svgData, canonicalImageUrl, diagramType }: Pro
     return (
       <div
         ref={ref}
-        className="w-full bg-white rounded-xl border border-gray-100 p-4 mb-4 flex items-center justify-center overflow-hidden"
-        style={{ maxHeight: "280px" }}
+        className="w-full bg-white rounded-xl border border-gray-100 p-2 sm:p-4 my-3 flex items-center justify-center"
         aria-label="Question diagram"
       />
     );
@@ -47,14 +56,13 @@ export function QuestionDiagram({ svgData, canonicalImageUrl, diagramType }: Pro
   // SCIENCE_COMPLEX fallback: show topic canonical image if available
   if (diagramType === "SCIENCE_COMPLEX" && canonicalImageUrl) {
     return (
-      <div className="w-full bg-white rounded-xl border border-gray-100 p-4 mb-4 flex items-center justify-center overflow-hidden">
+      <div className="w-full bg-white rounded-xl border border-gray-100 p-2 sm:p-4 my-3 flex items-center justify-center overflow-hidden">
         <Image
           src={canonicalImageUrl}
           alt="Reference diagram"
           width={400}
           height={280}
-          className="object-contain max-h-64"
-          style={{ maxHeight: "280px" }}
+          className="object-contain w-full max-h-64"
         />
       </div>
     );

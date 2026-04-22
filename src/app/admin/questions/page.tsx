@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { QuestionsClient } from "@/components/admin/questions-client";
+import { ClassifyDiagramsButton } from "@/components/admin/classify-diagrams-button";
 import { PlusCircle } from "lucide-react";
 import type { QuestionStatus } from "@prisma/client";
 
@@ -23,7 +24,7 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
     ...(sp.subject ? { subjectId: sp.subject } : {}),
   };
 
-  const [questions, total] = await Promise.all([
+  const [questions, total, unclassifiedCount] = await Promise.all([
     prisma.question.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -32,6 +33,16 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
       include: { topic: { include: { subject: true } } },
     }),
     prisma.question.count({ where }),
+    status === "PUBLISHED"
+      ? prisma.question.count({
+          where: {
+            status: "PUBLISHED",
+            diagramType: "NONE",
+            diagramStatus: "NONE",
+            diagramSvg: null,
+          },
+        })
+      : Promise.resolve(0),
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -45,11 +56,16 @@ export default async function QuestionsPage({ searchParams }: PageProps) {
           <h1 className="text-2xl font-bold">Questions</h1>
           <p className="text-gray-500 text-sm mt-1">{total.toLocaleString()} questions</p>
         </div>
-        <Button asChild>
-          <Link href="/admin/questions/new">
-            <PlusCircle className="h-4 w-4 mr-2" /> Add Question
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {unclassifiedCount > 0 && (
+            <ClassifyDiagramsButton unclassifiedCount={unclassifiedCount} />
+          )}
+          <Button asChild>
+            <Link href="/admin/questions/new">
+              <PlusCircle className="h-4 w-4 mr-2" /> Add Question
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Status filter tabs */}

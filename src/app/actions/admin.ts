@@ -805,6 +805,153 @@ export async function clearDiagramAction(questionId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Classify & generate diagrams for existing unclassified PUBLISHED questions
+// ---------------------------------------------------------------------------
+
+export async function classifyAndGenerateExistingDiagrams(): Promise<{
+  classified: number;
+  generated: number;
+  remaining: number;
+}> {
+  await requireAdmin();
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return { classified: 0, generated: 0, remaining: 0 };
+
+  const svgTypes = new Set(["GEOMETRY", "GRAPH", "SCHEMATIC"]);
+
+  // Pick up to 10 PUBLISHED questions with no diagram classification yet
+  const unclassified = await prisma.question.findMany({
+    where: {
+      status: "PUBLISHED",
+      diagramType: "NONE",
+      diagramStatus: "NONE",
+      diagramSvg: null,
+    },
+    select: { id: true, stem: true },
+    take: 10,
+  });
+
+  if (unclassified.length === 0) {
+    return { classified: 0, generated: 0, remaining: 0 };
+  }
+
+  // Classify in batches of 5 (one AI call per batch for efficiency)
+  const CLASSIFY_BATCH = 5;
+  const classifications: Array<{
+    id: string;
+    diagramType: string;
+    diagramHint: string | null;
+  }> = [];
+
+  for (let i = 0; i < unclassified.length; i += CLASSIFY_BATCH) {
+    const batch = unclassified.slice(i, i + CLASSIFY_BATCH);
+    try {
+      const prompt = `You are classifying exam questions to decide if a visual diagram would help students understand them.
+
+Questions:
+${JSON.stringify(batch.map((q) => ({ id: q.id, stem: q.stem })))}
+
+Classify each with exactly one of these types:
+- "GEOMETRY": shapes, angles, measurements, geometric constructions, coordinate geometry
+- "GRAPH": bar/pie/line charts, coordinate planes, data tables, number lines, scatter plots
+- "SCHEMATIC": labeled flow processes, food chains, Punnett squares, circuits, cause-effect diagrams, anatomy labels with arrows
+- "SCIENCE_COMPLEX": complex biological cross-sections, detailed anatomical structures, multi-step molecular diagrams — better shown as a reference photo than an SVG
+- "NONE": vocabulary, definitions, pure arithmetic, reading comprehension, history facts, geography names — no diagram needed
+
+For GEOMETRY, GRAPH, SCHEMATIC: write a concise diagramHint (1-2 sentences describing exactly what to draw).
+For SCIENCE_COMPLEX and NONE: diagramHint must be null.
+
+Respond ONLY with a JSON array (no markdown fences):
+[{"id":"...","diagramType":"GEOMETRY","diagramHint":"..."}]`;
+
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.1,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+
+      if (!res.ok) continue;
+      const json = await res.json();
+      const content: string = json.choices?.[0]?.message?.content?.trim() ?? "";
+      // Strip markdown fences if model wraps response
+      const cleaned = content.replace(/```json\n?|```/g, "").trim();
+      const parsed: Array<{
+        id: string;
+        diagramType: string;
+        diagramHint?: string | null;
+      }> = JSON.parse(cleaned);
+
+      const validTypes = new Set([
+        "NONE",
+        "GEOMETRY",
+        "GRAPH",
+        "SCHEMATIC",
+        "SCIENCE_COMPLEX",
+      ]);
+      for (const item of parsed) {
+        const dType = validTypes.has(item.diagramType) ? item.diagramType : "NONE";
+        classifications.push({
+          id: item.id,
+          diagramType: dType,
+          diagramHint: typeof item.diagramHint === "string" ? item.diagramHint : null,
+        });
+      }
+    } catch {
+      // Skip batch on parse/network error; cron or retry will cover it
+    }
+  }
+
+  // Persist classification results
+  let classified = 0;
+  const pendingIds: string[] = [];
+  for (const c of classifications) {
+    const needsSvg = svgTypes.has(c.diagramType);
+    await prisma.question.update({
+      where: { id: c.id },
+      data: {
+        diagramType: c.diagramType,
+        diagramHint: needsSvg ? c.diagramHint : null,
+        diagramStatus: needsSvg ? "PENDING" : "NONE",
+      },
+    });
+    if (needsSvg) pendingIds.push(c.id);
+    classified++;
+  }
+
+  // Immediately generate SVGs for the newly classified (up to 3 — rest handled by cron)
+  let generated = 0;
+  const GEN_BATCH = 3;
+  const toGenerate = pendingIds.slice(0, GEN_BATCH);
+  if (toGenerate.length > 0) {
+    const results = await Promise.all(
+      toGenerate.map((id) => generateDiagramForQuestion(id, apiKey))
+    );
+    generated = results.filter(Boolean).length;
+  }
+
+  // Count remaining unclassified questions for the UI to report back
+  const remaining = await prisma.question.count({
+    where: {
+      status: "PUBLISHED",
+      diagramType: "NONE",
+      diagramStatus: "NONE",
+      diagramSvg: null,
+    },
+  });
+
+  revalidatePath("/admin/questions");
+  return { classified, generated, remaining };
+}
+
+// ---------------------------------------------------------------------------
 // Topic: set canonical image URL (for SCIENCE_COMPLEX topics)
 // ---------------------------------------------------------------------------
 
