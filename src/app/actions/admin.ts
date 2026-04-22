@@ -816,32 +816,33 @@ export async function classifyAndGenerateExistingDiagrams(): Promise<{
   await requireAdmin();
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return { classified: 0, generated: 0, remaining: 0 };
+  const result = await classifyQuestionsInternal(apiKey, 30);
+  revalidatePath("/admin/questions");
+  return result;
+}
 
+// ---------------------------------------------------------------------------
+// Internal: classify unclassified PUBLISHED questions (no auth — callable from cron)
+// ---------------------------------------------------------------------------
+export async function classifyQuestionsInternal(
+  apiKey: string,
+  limit: number,
+): Promise<{ classified: number; generated: number; remaining: number }> {
   const svgTypes = new Set(["GEOMETRY", "GRAPH", "SCHEMATIC"]);
 
-  // Pick up to 10 PUBLISHED questions with no diagram classification yet
   const unclassified = await prisma.question.findMany({
-    where: {
-      status: "PUBLISHED",
-      diagramType: "NONE",
-      diagramStatus: "NONE",
-      diagramSvg: null,
-    },
+    where: { status: "PUBLISHED", diagramType: "NONE", diagramStatus: "NONE", diagramSvg: null },
     select: { id: true, stem: true },
-    take: 10,
+    take: limit,
   });
 
   if (unclassified.length === 0) {
-    return { classified: 0, generated: 0, remaining: 0 };
+    const remaining = 0;
+    return { classified: 0, generated: 0, remaining };
   }
 
-  // Classify in batches of 5 (one AI call per batch for efficiency)
   const CLASSIFY_BATCH = 5;
-  const classifications: Array<{
-    id: string;
-    diagramType: string;
-    diagramHint: string | null;
-  }> = [];
+  const classifications: Array<{ id: string; diagramType: string; diagramHint: string | null }> = [];
 
   for (let i = 0; i < unclassified.length; i += CLASSIFY_BATCH) {
     const batch = unclassified.slice(i, i + CLASSIFY_BATCH);
@@ -866,10 +867,7 @@ Respond ONLY with a JSON array (no markdown fences):
 
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: process.env.OPENROUTER_GENERATION_MODEL ?? "anthropic/claude-sonnet-4.6",
           messages: [{ role: "user", content: prompt }],
@@ -881,21 +879,11 @@ Respond ONLY with a JSON array (no markdown fences):
       if (!res.ok) continue;
       const json = await res.json();
       const content: string = json.choices?.[0]?.message?.content?.trim() ?? "";
-      // Strip markdown fences if model wraps response
       const cleaned = content.replace(/```json\n?|```/g, "").trim();
-      const parsed: Array<{
-        id: string;
-        diagramType: string;
-        diagramHint?: string | null;
-      }> = JSON.parse(cleaned);
+      const parsed: Array<{ id: string; diagramType: string; diagramHint?: string | null }> =
+        JSON.parse(cleaned);
 
-      const validTypes = new Set([
-        "NONE",
-        "GEOMETRY",
-        "GRAPH",
-        "SCHEMATIC",
-        "SCIENCE_COMPLEX",
-      ]);
+      const validTypes = new Set(["NONE", "GEOMETRY", "GRAPH", "SCHEMATIC", "SCIENCE_COMPLEX"]);
       for (const item of parsed) {
         const dType = validTypes.has(item.diagramType) ? item.diagramType : "NONE";
         classifications.push({
@@ -905,11 +893,10 @@ Respond ONLY with a JSON array (no markdown fences):
         });
       }
     } catch {
-      // Skip batch on parse/network error; cron or retry will cover it
+      // Skip batch on parse/network error
     }
   }
 
-  // Persist classification results
   let classified = 0;
   const pendingIds: string[] = [];
   for (const c of classifications) {
@@ -919,7 +906,6 @@ Respond ONLY with a JSON array (no markdown fences):
       data: {
         diagramType: c.diagramType,
         diagramHint: needsSvg ? c.diagramHint : null,
-        // SKIPPED = examined by AI, no diagram needed; PENDING = needs SVG generation
         diagramStatus: needsSvg ? "PENDING" : "SKIPPED",
       },
     });
@@ -927,28 +913,18 @@ Respond ONLY with a JSON array (no markdown fences):
     classified++;
   }
 
-  // Immediately generate SVGs for the newly classified (up to 3 — rest handled by cron)
+  // Immediately generate SVGs for the first 3 newly-classified SVG questions
   let generated = 0;
-  const GEN_BATCH = 3;
-  const toGenerate = pendingIds.slice(0, GEN_BATCH);
+  const toGenerate = pendingIds.slice(0, 3);
   if (toGenerate.length > 0) {
-    const results = await Promise.all(
-      toGenerate.map((id) => generateDiagramForQuestion(id, apiKey))
-    );
+    const results = await Promise.all(toGenerate.map((id) => generateDiagramForQuestion(id, apiKey)));
     generated = results.filter(Boolean).length;
   }
 
-  // Count remaining unclassified questions for the UI to report back
   const remaining = await prisma.question.count({
-    where: {
-      status: "PUBLISHED",
-      diagramType: "NONE",
-      diagramStatus: "NONE",
-      diagramSvg: null,
-    },
+    where: { status: "PUBLISHED", diagramType: "NONE", diagramStatus: "NONE", diagramSvg: null },
   });
 
-  revalidatePath("/admin/questions");
   return { classified, generated, remaining };
 }
 
