@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Show, SignInButton } from "@clerk/nextjs";
+import { Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { BookOpen, Brain, Trophy, Zap, ArrowRight, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,9 +36,12 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-3">
             <Show when="signed-out" fallback={
-              <Button asChild>
-                <Link href="/dashboard">Go to Dashboard <ArrowRight className="ml-1 h-4 w-4" /></Link>
-              </Button>
+              <div className="flex items-center gap-3">
+                <UserButton />
+                <Button asChild>
+                  <Link href="/dashboard">Go to Dashboard <ArrowRight className="ml-1 h-4 w-4" /></Link>
+                </Button>
+              </div>
             }>
               <SignInButton mode="modal">
                 <Button variant="ghost">Sign In</Button>
