@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/generate-diagrams",
-      "schedule": "0 * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
