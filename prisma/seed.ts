@@ -215,6 +215,201 @@ async function main() {
     console.log(`    ✓ ${topicNames.length} topics seeded`);
   }
 
+  // ── Exam Programs & Specifications ──────────────────────────────────────────
+  console.log("\n🌱 Seeding exam programs...");
+
+  const examPrograms = [
+    {
+      code: "AP",
+      name: "Advanced Placement",
+      country: "US",
+      authority: "College Board",
+      description: "College Board AP exams — university-level courses taken in high school.",
+      specs: [
+        {
+          code: "AP_MACRO",
+          name: "AP Macroeconomics",
+          gradeLevel: "Grade 11-12",
+          examBoard: "College Board",
+          defaultDurationMinutes: 130,
+          scoringModel: "composite_1_5",
+          reportingCategories: [
+            "Basic Economic Concepts",
+            "Economic Performance",
+            "National Income",
+            "Financial Sector",
+            "Stabilization Policies",
+            "Open Economy",
+          ],
+        },
+        {
+          code: "AP_MICRO",
+          name: "AP Microeconomics",
+          gradeLevel: "Grade 11-12",
+          examBoard: "College Board",
+          defaultDurationMinutes: 130,
+          scoringModel: "composite_1_5",
+          reportingCategories: [
+            "Basic Economic Concepts",
+            "Supply and Demand",
+            "Production and Cost",
+            "Imperfect Competition",
+            "Factor Markets",
+            "Market Failure",
+          ],
+        },
+      ],
+    },
+    {
+      code: "NSW_OC",
+      name: "NSW Opportunity Class",
+      country: "AU",
+      authority: "NSW Department of Education",
+      description: "NSW Opportunity Class Placement Test — selects students for academically selective classes in Years 5-6.",
+      specs: [
+        {
+          code: "NSW_OC_READING",
+          name: "OC Thinking Skills",
+          gradeLevel: "Year 4",
+          examBoard: "NSW DoE",
+          defaultDurationMinutes: 40,
+          scoringModel: "raw_score",
+          reportingCategories: ["Verbal Reasoning", "Numerical Reasoning"],
+        },
+        {
+          code: "NSW_OC_MATHS",
+          name: "OC Mathematical Reasoning",
+          gradeLevel: "Year 4",
+          examBoard: "NSW DoE",
+          defaultDurationMinutes: 40,
+          scoringModel: "raw_score",
+          reportingCategories: ["Arithmetic", "Problem Solving"],
+        },
+      ],
+    },
+    {
+      code: "NSW_SELECTIVE",
+      name: "NSW Selective High School",
+      country: "AU",
+      authority: "NSW Department of Education",
+      description: "NSW Selective High School Placement Test — selects Year 7 students for selective high schools.",
+      specs: [
+        {
+          code: "NSW_SEL_READING",
+          name: "Selective Reading",
+          gradeLevel: "Year 6",
+          examBoard: "NSW DoE",
+          defaultDurationMinutes: 40,
+          scoringModel: "raw_score",
+          reportingCategories: ["Reading Comprehension", "Vocabulary"],
+        },
+        {
+          code: "NSW_SEL_MATHS",
+          name: "Selective Mathematical Reasoning",
+          gradeLevel: "Year 6",
+          examBoard: "NSW DoE",
+          defaultDurationMinutes: 40,
+          scoringModel: "raw_score",
+          reportingCategories: ["Arithmetic", "Problem Solving", "Geometry"],
+        },
+        {
+          code: "NSW_SEL_THINKING",
+          name: "Selective Thinking Skills",
+          gradeLevel: "Year 6",
+          examBoard: "NSW DoE",
+          defaultDurationMinutes: 30,
+          scoringModel: "raw_score",
+          reportingCategories: ["Verbal Reasoning", "Numerical Reasoning", "Abstract Reasoning"],
+        },
+        {
+          code: "NSW_SEL_WRITING",
+          name: "Selective Writing",
+          gradeLevel: "Year 6",
+          examBoard: "NSW DoE",
+          defaultDurationMinutes: 20,
+          scoringModel: "raw_score",
+          reportingCategories: ["Narrative Writing", "Persuasive Writing"],
+        },
+      ],
+    },
+    {
+      code: "NSW_SCHOOL",
+      name: "NSW School Exams",
+      country: "AU",
+      authority: "NESA",
+      description: "NSW NESA school-based exams including HSC and Trials.",
+      specs: [
+        {
+          code: "NSW_HSC_MATHS_ADV",
+          name: "HSC Mathematics Advanced",
+          gradeLevel: "Year 12",
+          examBoard: "NESA",
+          defaultDurationMinutes: 180,
+          scoringModel: "raw_100",
+          reportingCategories: ["Functions", "Trigonometry", "Calculus", "Statistics"],
+        },
+        {
+          code: "NSW_HSC_ECON",
+          name: "HSC Economics",
+          gradeLevel: "Year 12",
+          examBoard: "NESA",
+          defaultDurationMinutes: 180,
+          scoringModel: "raw_100",
+          reportingCategories: ["Introduction to Economics", "The Global Economy", "Australia in the Global Economy", "Economic Policies"],
+        },
+      ],
+    },
+    {
+      code: "SAT",
+      name: "SAT",
+      country: "US",
+      authority: "College Board",
+      description: "College Board SAT — digital adaptive college admissions test.",
+      specs: [
+        {
+          code: "SAT_MATH",
+          name: "SAT Math",
+          gradeLevel: "Grade 11-12",
+          examBoard: "College Board",
+          defaultDurationMinutes: 70,
+          scoringModel: "scaled_200_800",
+          reportingCategories: ["Algebra", "Advanced Math", "Problem Solving and Data Analysis", "Geometry and Trigonometry"],
+        },
+        {
+          code: "SAT_RW",
+          name: "SAT Reading and Writing",
+          gradeLevel: "Grade 11-12",
+          examBoard: "College Board",
+          defaultDurationMinutes: 64,
+          scoringModel: "scaled_200_800",
+          reportingCategories: ["Information and Ideas", "Craft and Structure", "Expression of Ideas", "Standard English Conventions"],
+        },
+      ],
+    },
+  ];
+
+  for (const prog of examPrograms) {
+    const { specs, ...programData } = prog;
+
+    const program = await prisma.examProgram.upsert({
+      where: { code: programData.code },
+      update: { name: programData.name, description: programData.description },
+      create: programData,
+    });
+
+    console.log(`  ✓ ExamProgram: ${program.name}`);
+
+    for (const spec of specs) {
+      await prisma.examSpecification.upsert({
+        where: { examProgramId_code: { examProgramId: program.id, code: spec.code } },
+        update: { name: spec.name },
+        create: { examProgramId: program.id, ...spec },
+      });
+    }
+
+    console.log(`    ✓ ${specs.length} specifications seeded`);
+  }
+
   console.log("\n✅ Seed complete!");
 }
 

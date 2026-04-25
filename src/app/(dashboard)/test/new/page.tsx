@@ -34,7 +34,7 @@ export default async function NewTestPage({ searchParams }: PageProps) {
         <h1 className="text-2xl font-bold">Create a test</h1>
         <p className="text-gray-500 mt-1">Configure your practice session</p>
       </div>
-      <TestConfigForm subjects={subjects} initialSubject={selectedSubject} userId={user.id} />
+      <TestConfigForm subjects={subjects} initialSubject={selectedSubject} />
     </div>
   );
 }

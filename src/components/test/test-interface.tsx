@@ -22,7 +22,6 @@ type SessionWithSubject = TestSession & { subject: Subject };
 interface TestInterfaceProps {
   session: SessionWithSubject;
   questions: QuestionWithOptions[];
-  userId: string;
 }
 
 function formatTime(seconds: number) {
@@ -33,7 +32,7 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
-export function TestInterface({ session, questions, userId }: TestInterfaceProps) {
+export function TestInterface({ session, questions }: TestInterfaceProps) {
   const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -74,7 +73,6 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
         questionId: currentQuestion.id,
         selectedOption: label,
         timeTakenMs,
-        userId,
       });
     } catch {
       toast.error("Failed to save answer. Please try again.");
@@ -95,7 +93,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
     if (completing) return;
     setCompleting(true);
     try {
-      const result = await completeTestSession(session.id, userId);
+      const result = await completeTestSession(session.id);
       if (result.error) {
         toast.error(result.error);
         return;
@@ -105,7 +103,7 @@ export function TestInterface({ session, questions, userId }: TestInterfaceProps
       toast.error("Failed to complete test. Please try again.");
       setCompleting(false);
     }
-  }, [session.id, userId, router, completing]);
+  }, [session.id, router, completing]);
 
   const difficultyColor = {
     EASY: "text-green-600 bg-green-50",

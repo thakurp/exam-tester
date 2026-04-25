@@ -1,11 +1,11 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { getOrCreateDbUser } from "@/lib/auth";
 import { awardPoints, updateStreak } from "@/lib/points";
 import type { Difficulty } from "@prisma/client";
 
 interface CreateTestSessionParams {
-  userId: string;
   subjectId: string;
   topicIds: string[];
   questionCount: number;
@@ -15,7 +15,10 @@ interface CreateTestSessionParams {
 }
 
 export async function createTestSession(params: CreateTestSessionParams) {
-  const { userId, subjectId, topicIds, questionCount, timeLimitMinutes, difficulties, mode } = params;
+  const user = await getOrCreateDbUser();
+  const userId = user.id;
+
+  const { subjectId, topicIds, questionCount, timeLimitMinutes, difficulties, mode } = params;
 
   // Resolve topics
   let resolvedTopicIds = topicIds;
@@ -92,17 +95,26 @@ interface SubmitAnswerParams {
   selectedOption?: string;
   answerText?: string;
   timeTakenMs?: number;
-  userId: string;
 }
 
 export async function submitAnswer(params: SubmitAnswerParams) {
-  const { sessionId, questionId, selectedOption, answerText, timeTakenMs, userId } = params;
+  const { sessionId, questionId, selectedOption, answerText, timeTakenMs } = params;
 
-  // Verify session belongs to user
+  // Derive authenticated user server-side — never trust client-supplied identity
+  const user = await getOrCreateDbUser();
+  const userId = user.id;
+
+  // Verify session belongs to the authenticated user
   const session = await prisma.testSession.findFirst({
     where: { id: sessionId, userId, completedAt: null },
   });
   if (!session) return { error: "Session not found or already completed" };
+
+  // Validate the question is part of this session's question set
+  const config = session.config as { questionIds?: string[] };
+  if (config.questionIds && !config.questionIds.includes(questionId)) {
+    return { error: "Question does not belong to this session" };
+  }
 
   const question = await prisma.question.findUnique({
     where: { id: questionId },
@@ -126,6 +138,13 @@ export async function submitAnswer(params: SubmitAnswerParams) {
   };
   const pointsAwarded = isCorrect ? (pointsMap[question.difficulty] ?? 10) : 0;
 
+  // Read existing answer before upsert to make points awarding idempotent
+  const existingAnswer = await prisma.userAnswer.findUnique({
+    where: { sessionId_questionId: { sessionId, questionId } },
+    select: { isCorrect: true },
+  });
+  const wasAlreadyCorrect = existingAnswer?.isCorrect === true;
+
   await prisma.userAnswer.upsert({
     where: { sessionId_questionId: { sessionId, questionId } },
     create: {
@@ -146,8 +165,8 @@ export async function submitAnswer(params: SubmitAnswerParams) {
     },
   });
 
-  // Award points
-  if (isCorrect && pointsAwarded > 0) {
+  // Award points only once per question — not on re-submissions that were already correct
+  if (isCorrect && pointsAwarded > 0 && !wasAlreadyCorrect) {
     await awardPoints({
       userId,
       amount: pointsAwarded,
@@ -160,7 +179,11 @@ export async function submitAnswer(params: SubmitAnswerParams) {
   return { isCorrect, pointsAwarded };
 }
 
-export async function completeTestSession(sessionId: string, userId: string) {
+export async function completeTestSession(sessionId: string) {
+  // Derive authenticated user server-side
+  const user = await getOrCreateDbUser();
+  const userId = user.id;
+
   const session = await prisma.testSession.findFirst({
     where: { id: sessionId, userId },
     include: { userAnswers: true },

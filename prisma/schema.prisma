@@ -21,6 +21,10 @@ enum QuestionType {
   MCQ
   SHORT_ANSWER
   TRUE_FALSE
+  NUMERIC
+  FRQ_STRUCTURED
+  ESSAY
+  GRAPH_OR_DRAWING
 }
 
 enum Difficulty {
@@ -77,6 +81,7 @@ model User {
   pointsLedger          PointsLedger[]
   communityExplanations CommunityExplanation[]
   streak                Streak?
+  paperAttempts         PaperAttempt[]
 
   @@index([clerkId])
   @@index([role])
@@ -105,13 +110,14 @@ model Subject {
 }
 
 model Topic {
-  id          String   @id @default(cuid())
-  subjectId   String
-  name        String
-  description String?
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id                String   @id @default(cuid())
+  subjectId         String
+  name              String
+  description       String?
+  canonicalImageUrl String?  // representative diagram/image for this topic
+  sortOrder         Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
 
   subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   questions Question[]
@@ -143,6 +149,18 @@ model Question {
   diagramAttempts   Int      @default(0)
   correctAnswer     String?
   correctAnswerText String?
+  estimatedSeconds  Int?
+
+  // Exam architecture (nullable — backwards compatible with existing MCQ questions)
+  sourceDocumentId  String?
+  examProgramCode   String?
+
+  // Diagram / visual question support
+  diagramType     String   @default("NONE") // e.g. "NONE", "supply_demand", "circular_flow"
+  diagramStatus   String   @default("NONE") // "NONE" | "pending" | "approved" | "rejected"
+  diagramSvg      String?  // stored SVG markup
+  diagramHint     String?  // generation hint/prompt used
+  diagramAttempts Int      @default(0)
 
   pointsEasy   Int @default(10)
   pointsMedium Int @default(25)
@@ -157,6 +175,9 @@ model Question {
   userAnswers           UserAnswer[]
   llmExplanationCache   LlmExplanationCache[]
   communityExplanations CommunityExplanation[]
+  questionParts         QuestionPart[]
+  generatedPaperLinks   GeneratedPaperQuestion[]
+  rubricCriteria        RubricCriterion[]
 
   @@index([topicId])
   @@index([status])
@@ -297,3 +318,432 @@ model CommunityExplanation {
   @@index([uploaderId])
   @@index([status])
 }
+
+// ─── Multi-Exam Platform Architecture ────────────────────
+// Supports AP, NSW OC, NSW Selective, NSW School Exams, SAT, and future exams.
+// All new fields are optional / nullable to preserve backward compatibility.
+
+// ─── Enums ────────────────────────────────────────────────
+
+enum SourceDocumentType {
+  QUESTION_PAPER
+  INDIVIDUAL_QUESTION
+  ANSWER_KEY
+  SCORING_GUIDELINE
+  MARKING_SCHEME
+  SAMPLE_RESPONSE
+  EXAMINER_REPORT
+  SCORE_DISTRIBUTION
+  SCORING_STATISTICS
+  SYLLABUS_SPECIFICATION
+  OTHER
+}
+
+enum SourceDocumentStatus {
+  REGISTERED
+  EXTRACTING
+  EXTRACTED
+  STRUCTURING
+  REVIEW_PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BlueprintStatus {
+  DRAFT
+  REVIEW_PENDING
+  APPROVED
+  ARCHIVED
+}
+
+enum GeneratedPaperStatus {
+  DRAFT
+  QUALITY_CHECKING
+  REVIEW_PENDING
+  APPROVED
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum QuestionPartResponseType {
+  TEXT
+  NUMERIC
+  GRAPH_UPLOAD
+  IMAGE_UPLOAD
+  MULTI_PART
+}
+
+enum PaperAttemptMode {
+  DAILY_PRACTICE
+  REAL_PRACTICE_TEST
+}
+
+enum PaperAttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  TIMED_OUT
+}
+
+enum ScorerType {
+  AUTO
+  SELF_REVIEW
+  ADMIN
+  AI_SUGGESTED
+}
+
+// ─── Exam Program & Specification ─────────────────────────
+
+/// Represents a broad exam family such as AP, NSW Selective, or SAT.
+model ExamProgram {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "AP", "NSW_OC", "NSW_SELECTIVE", "NSW_SCHOOL", "SAT"
+  name        String
+  country     String   @default("AU")
+  authority   String?  // e.g. "College Board", "NSW Education Standards Authority"
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  specifications ExamSpecification[]
+  sourceDocuments SourceDocument[]
+  paperBlueprints PaperBlueprint[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+/// Represents stable rules for a specific exam type within a program.
+/// Examples: AP Macroeconomics, NSW Selective Reading, SAT Digital Math.
+model ExamSpecification {
+  id                     String   @id @default(cuid())
+  examProgramId          String
+  subjectId              String?  // nullable — links to existing Subject if applicable
+  code                   String   // e.g. "AP_MACRO", "NSW_SEL_READING", "SAT_MATH"
+  name                   String
+  gradeLevel             String?  // e.g. "Year 10", "Grade 12", "Year 4-6"
+  examBoard              String?
+  defaultDurationMinutes Int?
+  scoringModel           String?  // e.g. "raw_score", "scaled_800", "band_1_6"
+  reportingCategories    Json?    // JSON array of skill/topic reporting categories
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  examProgram     ExamProgram      @relation(fields: [examProgramId], references: [id])
+  examTemplates   ExamTemplate[]
+  paperBlueprints PaperBlueprint[]
+
+  @@unique([examProgramId, code])
+  @@index([examProgramId])
+  @@index([subjectId])
+  @@index([isActive])
+}
+
+/// Represents a concrete paper structure — e.g. "AP Macro 2025-style full paper".
+model ExamTemplate {
+  id                     String   @id @default(cuid())
+  examSpecificationId    String
+  name                   String
+  version                String?  // e.g. "2025", "2024-form-A"
+  year                   Int?
+  totalDurationMinutes   Int?
+  totalMarks             Int?
+  navigationRules        Json?    // e.g. { "canGoBack": true, "mustCompleteSection": false }
+  toolRules              Json?    // e.g. { "calculator": "four-function", "formulaSheet": true }
+  instructions           String?
+  status                 String   @default("DRAFT") // DRAFT | APPROVED | ARCHIVED
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  examSpecification ExamSpecification @relation(fields: [examSpecificationId], references: [id])
+  sections          PaperSection[]
+  paperAttempts     PaperAttempt[]
+
+  @@index([examSpecificationId])
+  @@index([status])
+}
+
+/// An ordered section within an exam template.
+/// Examples: "Section I — 60 min 60 MCQ", "Section II — 50 min 3 FRQ".
+model PaperSection {
+  id                   String   @id @default(cuid())
+  examTemplateId       String
+  title                String
+  instructions         String?
+  sortOrder            Int      @default(0)
+  durationMinutes      Int?
+  questionCount        Int?
+  marks                Int?
+  allowedQuestionTypes Json?    // JSON array of QuestionType values
+  topicDistribution    Json?    // JSON map of topic -> percentage
+  difficultyDistribution Json?  // JSON map of difficulty -> percentage
+  createdAt            DateTime @default(now())
+
+  examTemplate          ExamTemplate          @relation(fields: [examTemplateId], references: [id], onDelete: Cascade)
+  generatedPaperQuestions GeneratedPaperQuestion[]
+  attemptSectionProgress  AttemptSectionProgress[]
+
+  @@index([examTemplateId])
+}
+
+// ─── Source Documents & Blueprints ────────────────────────
+
+/// Represents a registered source file — official paper, guideline, rubric, etc.
+/// These are never published directly to students; they inform blueprints and metadata.
+model SourceDocument {
+  id               String               @id @default(cuid())
+  examProgramId    String?
+  subjectId        String?
+  year             Int?
+  gradeLevel       String?
+  setNumber        Int?
+  questionNumber   Int?
+  documentType     SourceDocumentType
+  fileName         String
+  storageKey       String?              // object storage key for production
+  localPath        String?              // dev-only local path
+  sha256Hash       String?
+  fileSizeBytes    Int?
+  sourceUrl        String?
+  permissionsStatus String              @default("INTERNAL") // INTERNAL | LICENSED | PUBLIC_DOMAIN
+  extractionStatus SourceDocumentStatus @default(REGISTERED)
+  extractedText    String?
+  metadata         Json?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  examProgram ExamProgram? @relation(fields: [examProgramId], references: [id])
+
+  @@index([examProgramId])
+  @@index([subjectId])
+  @@index([year])
+  @@index([documentType])
+  @@index([sha256Hash])
+  @@index([extractionStatus])
+}
+
+/// Learned or authored paper structure used to generate original practice papers.
+model PaperBlueprint {
+  id                     String          @id @default(cuid())
+  examProgramId          String?
+  examSpecificationId    String?
+  name                   String
+  sourceDocumentIds      Json?           // JSON array of SourceDocument IDs used to build this blueprint
+  sections               Json?           // JSON array of section descriptors
+  topicDistribution      Json?           // JSON map of topic -> percentage
+  difficultyDistribution Json?           // JSON map of difficulty -> percentage
+  questionTypeDistribution Json?         // JSON map of QuestionType -> count/percentage
+  marksDistribution      Json?
+  styleConstraints       Json?           // wording rules, graph frequency, etc.
+  qualityRules           Json?           // minimum similarity threshold, point-total rules, etc.
+  status                 BlueprintStatus @default(DRAFT)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  examProgram       ExamProgram?       @relation(fields: [examProgramId], references: [id])
+  examSpecification ExamSpecification? @relation(fields: [examSpecificationId], references: [id])
+  generatedPapers   GeneratedPaper[]
+
+  @@index([examProgramId])
+  @@index([examSpecificationId])
+  @@index([status])
+}
+
+/// A concrete paper generated from a blueprint for student practice.
+model GeneratedPaper {
+  id                 String               @id @default(cuid())
+  paperBlueprintId   String?
+  examTemplateId     String?
+  name               String?
+  generationModel    String?              // e.g. "openai/gpt-4o"
+  promptVersion      String?
+  similarityScore    Float?               // similarity to source documents (0-1, lower is safer)
+  qualityGateResults Json?                // JSON map of gate name -> passed bool + notes
+  approvalStatus     GeneratedPaperStatus @default(DRAFT)
+  reviewerId         String?
+  reviewNotes        String?
+  publishedAt        DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  paperBlueprint PaperBlueprint?          @relation(fields: [paperBlueprintId], references: [id])
+  questions      GeneratedPaperQuestion[]
+  paperAttempts  PaperAttempt[]
+
+  @@index([paperBlueprintId])
+  @@index([approvalStatus])
+}
+
+/// Join table linking generated papers to questions with section, ordering, and marks.
+model GeneratedPaperQuestion {
+  id               String @id @default(cuid())
+  generatedPaperId String
+  paperSectionId   String?
+  questionId       String
+  sortOrder        Int    @default(0)
+  marks            Int?
+
+  generatedPaper GeneratedPaper @relation(fields: [generatedPaperId], references: [id], onDelete: Cascade)
+  paperSection   PaperSection?  @relation(fields: [paperSectionId], references: [id])
+  question       Question       @relation(fields: [questionId], references: [id])
+
+  @@unique([generatedPaperId, questionId])
+  @@index([generatedPaperId])
+  @@index([questionId])
+}
+
+// ─── Constructed Response (FRQ / Essay / Graph) ───────────
+
+/// A subpart of a constructed-response question.
+/// Examples: AP FRQ part a/b/c, multi-step maths working.
+model QuestionPart {
+  id                   String                   @id @default(cuid())
+  questionId           String
+  label                String                   // e.g. "a", "b", "i", "ii"
+  prompt               String
+  marks                Int
+  sortOrder            Int                      @default(0)
+  expectedResponseType QuestionPartResponseType @default(TEXT)
+  requiresGraph        Boolean                  @default(false)
+  requiresUpload       Boolean                  @default(false)
+  requiresCalculation  Boolean                  @default(false)
+  createdAt            DateTime                 @default(now())
+
+  question         Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  rubricCriteria   RubricCriterion[]
+  studentResponses StudentResponse[]
+
+  @@index([questionId])
+}
+
+/// A scoring rule for partial credit on a constructed-response part.
+model RubricCriterion {
+  id               String   @id @default(cuid())
+  questionId       String?  // nullable — can be question-level or part-level
+  questionPartId   String?
+  marks            Int
+  criterionText    String
+  acceptableEvidence String?
+  commonMistakes   String?
+  feedbackTemplate String?
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  questionPart   QuestionPart?   @relation(fields: [questionPartId], references: [id], onDelete: Cascade)
+  question       Question?       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  responseScores ResponseScore[]
+
+  @@index([questionPartId])
+  @@index([questionId])
+}
+
+// ─── Paper Attempts ───────────────────────────────────────
+// Unified attempt model for both Daily Practice and Real Practice Test.
+// The existing TestSession is preserved for current MCQ flows.
+
+/// A full paper attempt — replaces/extends TestSession for template-driven sessions.
+model PaperAttempt {
+  id               String             @id @default(cuid())
+  userId           String
+  mode             PaperAttemptMode
+  examProgramId    String?
+  examTemplateId   String?
+  generatedPaperId String?
+  status           PaperAttemptStatus @default(IN_PROGRESS)
+  startedAt        DateTime           @default(now())
+  completedAt      DateTime?
+  timeLimitAt      DateTime?
+  score            Float?
+  maxScore         Float?
+  metadata         Json?
+
+  user           User                   @relation(fields: [userId], references: [id])
+  examTemplate   ExamTemplate?          @relation(fields: [examTemplateId], references: [id])
+  generatedPaper GeneratedPaper?        @relation(fields: [generatedPaperId], references: [id])
+  sectionProgress AttemptSectionProgress[]
+  studentResponses StudentResponse[]
+
+  @@index([userId])
+  @@index([examProgramId])
+  @@index([status])
+}
+
+/// Per-section timing and progress within a PaperAttempt.
+model AttemptSectionProgress {
+  id               String    @id @default(cuid())
+  paperAttemptId   String
+  paperSectionId   String
+  startedAt        DateTime?
+  completedAt      DateTime?
+  timeSpentSeconds Int?
+  status           String    @default("NOT_STARTED") // NOT_STARTED | IN_PROGRESS | COMPLETED
+
+  paperAttempt PaperAttempt @relation(fields: [paperAttemptId], references: [id], onDelete: Cascade)
+  paperSection PaperSection @relation(fields: [paperSectionId], references: [id])
+
+  @@unique([paperAttemptId, paperSectionId])
+  @@index([paperAttemptId])
+}
+
+/// A student response to a question (or question part) within a PaperAttempt.
+model StudentResponse {
+  id               String    @id @default(cuid())
+  paperAttemptId   String
+  questionId       String
+  questionPartId   String?   // populated for multi-part/FRQ subparts
+  answerText       String?
+  numericAnswer    Float?
+  selectedOptionId String?   // for MCQ within a PaperAttempt
+  isCorrect        Boolean?  // null until graded (for FRQ/rubric questions)
+  marksAwarded     Float?    // null until graded
+  timeSpentSeconds Int?
+  submittedAt      DateTime  @default(now())
+
+  paperAttempt PaperAttempt   @relation(fields: [paperAttemptId], references: [id], onDelete: Cascade)
+  questionPart QuestionPart?  @relation(fields: [questionPartId], references: [id])
+  artifacts    ResponseArtifact[]
+  scores       ResponseScore[]
+
+  @@index([paperAttemptId])
+  @@index([questionId])
+}
+
+/// An uploaded image, drawing, scan, or file submitted as part of a StudentResponse.
+model ResponseArtifact {
+  id               String   @id @default(cuid())
+  studentResponseId String
+  artifactType     String   // "image" | "drawing" | "document"
+  storageKey       String?
+  localPath        String?
+  mimeType         String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  studentResponse StudentResponse @relation(fields: [studentResponseId], references: [id], onDelete: Cascade)
+
+  @@index([studentResponseId])
+}
+
+/// Criterion-level scoring for a StudentResponse — enables partial-credit feedback.
+model ResponseScore {
+  id                String     @id @default(cuid())
+  studentResponseId String
+  rubricCriterionId String?
+  marksAwarded      Float
+  feedback          String?
+  scorerType        ScorerType @default(AUTO)
+  scorerUserId      String?
+  confidence        Float?     // 0-1, used for AI-scored responses
+  reviewStatus      String     @default("ACCEPTED") // ACCEPTED | NEEDS_REVIEW | OVERRIDDEN
+  createdAt         DateTime   @default(now())
+
+  studentResponse StudentResponse  @relation(fields: [studentResponseId], references: [id], onDelete: Cascade)
+  rubricCriterion RubricCriterion? @relation(fields: [rubricCriterionId], references: [id])
+
+  @@index([studentResponseId])
+  @@index([rubricCriterionId])
+}
+

@@ -43,7 +43,6 @@ export default async function TakeTestPage({ params }: PageProps) {
     <TestInterface
       session={session}
       questions={orderedQuestions}
-      userId={user.id}
     />
   );
 }

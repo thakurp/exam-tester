@@ -17,7 +17,6 @@ type SubjectWithTopics = Subject & { topics: Topic[] };
 interface TestConfigFormProps {
   subjects: SubjectWithTopics[];
   initialSubject: SubjectWithTopics;
-  userId: string;
 }
 
 const QUESTION_COUNTS = [5, 10, 15, 20, 30, 40];
@@ -31,7 +30,7 @@ const TIME_LIMITS = [
 ];
 const DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
 
-export function TestConfigForm({ subjects, initialSubject, userId }: TestConfigFormProps) {
+export function TestConfigForm({ subjects, initialSubject }: TestConfigFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -59,7 +58,6 @@ export function TestConfigForm({ subjects, initialSubject, userId }: TestConfigF
   const handleStart = () => {
     startTransition(async () => {
       const result = await createTestSession({
-        userId,
         subjectId: selectedSubject.id,
         topicIds: selectedTopics,
         questionCount,

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { BookOpen, Upload, Sparkles, Users, FileText, BarChart } from "lucide-react";
+import { BookOpen, Upload, Sparkles, Users, FileText, BarChart, FolderOpen } from "lucide-react";
 
 export default async function AdminDashboard() {
   const [questionCount, subjectCount, sessionCount, userCount] = await Promise.all([
@@ -32,6 +32,7 @@ export default async function AdminDashboard() {
     { label: "AI Generate Questions", href: "/admin/generate", icon: Sparkles, desc: "Generate new questions with AI" },
     { label: "Manage Questions", href: "/admin/questions", icon: BookOpen, desc: "View, edit, and publish questions" },
     { label: "Manage Subjects", href: "/admin/subjects", icon: BarChart, desc: "Configure subjects and topics" },
+    { label: "Source Documents", href: "/admin/source-documents", icon: FolderOpen, desc: "Register and manage official papers, rubrics, and guidelines" },
   ];
 
   return (

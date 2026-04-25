@@ -28,6 +28,7 @@ const adminNav = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Questions", href: "/admin/questions", icon: BookOpen },
   { label: "Subjects", href: "/admin/subjects", icon: BookOpen },
+  { label: "Source Documents", href: "/admin/source-documents", icon: BookOpen },
   { label: "Upload CSV", href: "/admin/upload", icon: BookOpen },
   { label: "Generate AI", href: "/admin/generate", icon: BookOpen },
 ];
