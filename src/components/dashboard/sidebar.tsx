@@ -10,6 +10,7 @@ import {
   Trophy,
   Settings,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { User } from "@prisma/client";
@@ -20,6 +21,7 @@ interface SidebarProps {
 
 const studentNav = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Practice Tests", href: "/practice", icon: FileText },
   { label: "Test History", href: "/test/history", icon: History },
   { label: "Leaderboard", href: "/leaderboard", icon: Trophy },
 ];
@@ -31,6 +33,7 @@ const adminNav = [
   { label: "Source Documents", href: "/admin/source-documents", icon: BookOpen },
   { label: "Upload CSV", href: "/admin/upload", icon: BookOpen },
   { label: "Generate AI", href: "/admin/generate", icon: BookOpen },
+  { label: "Papers", href: "/admin/papers", icon: FileText },
 ];
 
 export function DashboardSidebar({ user }: SidebarProps) {

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
-import { BookOpen, Trophy, Flame, Target, ArrowRight, PlusCircle } from "lucide-react";
+import { BookOpen, Trophy, Flame, Target, ArrowRight, PlusCircle, FileText } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export default async function DashboardPage() {
@@ -110,6 +110,47 @@ export default async function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Subjects grid */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Quick actions</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          <Link href="/practice">
+            <Card className="hover:shadow-md transition-all border-l-4 border-l-indigo-500 cursor-pointer group">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="h-10 w-10 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+                  <FileText className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm group-hover:text-indigo-600 transition-colors">
+                    Real Practice Test
+                  </p>
+                  <p className="text-xs text-gray-500">Full AP exam: 60 MCQ + 3 FRQ with timer</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-indigo-500 ml-auto transition-colors" />
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/test/new">
+            <Card className="hover:shadow-md transition-all border-l-4 border-l-green-500 cursor-pointer group">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center shrink-0">
+                  <BookOpen className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm group-hover:text-green-600 transition-colors">
+                    Quick MCQ Quiz
+                  </p>
+                  <p className="text-xs text-gray-500">Practice individual topics, any subject</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-green-500 ml-auto transition-colors" />
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
       </div>
 
       {/* Subjects grid */}
