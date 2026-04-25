@@ -122,8 +122,6 @@ model Topic {
   subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   questions Question[]
 
-  canonicalImageUrl String?
-
   @@unique([subjectId, name])
   @@index([subjectId])
 }
@@ -154,13 +152,6 @@ model Question {
   // Exam architecture (nullable — backwards compatible with existing MCQ questions)
   sourceDocumentId  String?
   examProgramCode   String?
-
-  // Diagram / visual question support
-  diagramType     String   @default("NONE") // e.g. "NONE", "supply_demand", "circular_flow"
-  diagramStatus   String   @default("NONE") // "NONE" | "pending" | "approved" | "rejected"
-  diagramSvg      String?  // stored SVG markup
-  diagramHint     String?  // generation hint/prompt used
-  diagramAttempts Int      @default(0)
 
   pointsEasy   Int @default(10)
   pointsMedium Int @default(25)
