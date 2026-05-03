@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { submitAnswer, completeTestSession } from "@/app/actions/test";
 import { toast } from "sonner";
-import { Clock, ChevronRight, ChevronLeft, CheckSquare, Loader2 } from "lucide-react";
+import { Clock, ChevronRight, ChevronLeft, CheckSquare, Loader2, Eye, ArrowLeft, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QuestionDiagram } from "@/components/question/question-diagram";
 import type { Question, McqOption, TestSession, Subject } from "@prisma/client";
@@ -39,6 +39,8 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
   const [submitting, setSubmitting] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const [showReview, setShowReview] = useState(false);
+  const [returnToReview, setReturnToReview] = useState(false);
 
   // Timer
   const initialSeconds = session.timeLimitAt
@@ -61,8 +63,7 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
   const answeredCount = Object.keys(answers).length;
 
   const handleSelect = async (label: string) => {
-    if (answers[currentQuestion.id]) return; // Already answered in exam mode
-
+    const wasAnswered = !!answers[currentQuestion.id];
     const timeTakenMs = Date.now() - questionStartTime;
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: label }));
 
@@ -80,13 +81,25 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
       setSubmitting(false);
     }
 
-    // Auto advance in exam mode after brief delay
-    if (session.mode === "EXAM" && currentIndex < totalQuestions - 1) {
+    // Auto advance on first answer in exam mode after brief delay
+    if (!wasAnswered && session.mode === "EXAM" && currentIndex < totalQuestions - 1) {
       setTimeout(() => {
         setCurrentIndex((i) => i + 1);
         setQuestionStartTime(Date.now());
       }, 400);
     }
+  };
+
+  const handleOpenReview = () => {
+    setShowReview(true);
+    setReturnToReview(false);
+  };
+
+  const handleJumpToQuestion = (idx: number) => {
+    setShowReview(false);
+    setReturnToReview(true);
+    setCurrentIndex(idx);
+    setQuestionStartTime(Date.now());
   };
 
   const handleComplete = useCallback(async () => {
@@ -111,6 +124,19 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
     HARD: "text-red-600 bg-red-50",
   };
 
+  if (showReview) {
+    return (
+      <TestReviewPanel
+        questions={questions}
+        answers={answers}
+        onClose={() => setShowReview(false)}
+        onJumpTo={handleJumpToQuestion}
+        onSubmit={handleComplete}
+        completing={completing}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -133,6 +159,15 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
               <Clock className="h-3.5 w-3.5" />
               {formatTime(secondsLeft)}
             </div>
+          )}
+          {returnToReview ? (
+            <Button size="sm" variant="outline" onClick={handleOpenReview} className="gap-1 shrink-0">
+              <ArrowLeft className="h-3.5 w-3.5" /> Back to Review
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={handleOpenReview} className="gap-1 shrink-0">
+              <Eye className="h-3.5 w-3.5" /> Review
+            </Button>
           )}
         </div>
       </div>
@@ -208,7 +243,11 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
             <ChevronLeft className="h-4 w-4 mr-1" /> Previous
           </Button>
 
-          {currentIndex < totalQuestions - 1 ? (
+          {returnToReview ? (
+            <Button variant="outline" onClick={handleOpenReview} className="touch-manipulation gap-1">
+              <ArrowLeft className="h-4 w-4" /> Back to Review
+            </Button>
+          ) : currentIndex < totalQuestions - 1 ? (
             <Button
               variant="ghost"
               onClick={() => {
@@ -221,15 +260,10 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
             </Button>
           ) : (
             <Button
-              onClick={handleComplete}
-              disabled={completing}
-              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto touch-manipulation"
+              onClick={handleOpenReview}
+              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto touch-manipulation gap-2"
             >
-              {completing ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Finishing...</>
-              ) : (
-                <><CheckSquare className="h-4 w-4 mr-2" /> Finish Test</>
-              )}
+              <Eye className="h-4 w-4" /> Review & Submit
             </Button>
           )}
         </div>
@@ -259,6 +293,120 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Review Panel ─────────────────────────────────────────────────────────────
+
+function TestReviewPanel({
+  questions,
+  answers,
+  onClose,
+  onJumpTo,
+  onSubmit,
+  completing,
+}: {
+  questions: QuestionWithOptions[];
+  answers: Record<string, string>;
+  onClose: () => void;
+  onJumpTo: (idx: number) => void;
+  onSubmit: () => void;
+  completing: boolean;
+}) {
+  const answeredCount = Object.keys(answers).length;
+  const totalQuestions = questions.length;
+  const unansweredCount = totalQuestions - answeredCount;
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to exam
+          </button>
+          <Button
+            onClick={onSubmit}
+            disabled={completing}
+            className="bg-indigo-600 hover:bg-indigo-700 gap-2"
+          >
+            <Send className="h-4 w-4" />
+            {completing ? "Submitting\u2026" : "Confirm & Submit"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto w-full px-4 py-6 space-y-4">
+        {/* Summary */}
+        <div className="bg-white rounded-xl border p-4">
+          <p className="text-sm font-semibold text-gray-800">
+            {answeredCount} of {totalQuestions} answered
+          </p>
+          {unansweredCount > 0 && (
+            <p className="text-xs text-amber-600 mt-1">
+              {unansweredCount} question{unansweredCount > 1 ? "s" : ""} not yet answered — you can still submit.
+            </p>
+          )}
+        </div>
+
+        {/* Answer sheet */}
+        <div className="bg-white rounded-xl border overflow-hidden divide-y">
+          {questions.map((q, idx) => {
+            const selectedLabel = answers[q.id];
+            const selectedOpt = q.options.find((o) => o.label === selectedLabel);
+            return (
+              <div key={q.id} className="flex items-center gap-3 px-4 py-3">
+                <span
+                  className={cn(
+                    "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0",
+                    selectedLabel
+                      ? "bg-green-100 text-green-700"
+                      : "bg-amber-100 text-amber-600"
+                  )}
+                >
+                  {idx + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 truncate">
+                    {q.stem.length > 80 ? q.stem.slice(0, 80) + "\u2026" : q.stem}
+                  </p>
+                  {selectedOpt ? (
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      <span className="font-semibold">{selectedOpt.label}.</span>{" "}
+                      {selectedOpt.text.length > 60
+                        ? selectedOpt.text.slice(0, 60) + "\u2026"
+                        : selectedOpt.text}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-600 font-medium mt-0.5">Not answered</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => onJumpTo(idx)}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium shrink-0 ml-2"
+                >
+                  {selectedLabel ? "Change" : "Answer"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom submit */}
+        <Button
+          onClick={onSubmit}
+          disabled={completing}
+          size="lg"
+          className="w-full bg-indigo-600 hover:bg-indigo-700 gap-2"
+        >
+          <Send className="h-4 w-4" />
+          {completing ? "Submitting\u2026" : "Confirm & Submit"}
+        </Button>
       </div>
     </div>
   );
