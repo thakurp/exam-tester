@@ -208,16 +208,19 @@ export function TestInterface({ session, questions }: TestInterfaceProps) {
         <div className="space-y-2">
           {currentQuestion.options.map((option) => {
             const selected = answers[currentQuestion.id] === option.label;
+            const alreadyAnswered = !!answers[currentQuestion.id];
+            // Lock answers in exam mode unless user returned from review to change
+            const locked = !returnToReview && session.mode === "EXAM" && alreadyAnswered;
             return (
               <button
                 key={option.id}
                 onClick={() => handleSelect(option.label)}
-                disabled={!!answers[currentQuestion.id] || submitting}
+                disabled={locked || submitting}
                 className={cn(
                   "w-full text-left px-4 sm:px-5 py-3 sm:py-4 min-h-[52px] rounded-xl border-2 transition-all text-sm font-medium break-words touch-manipulation",
                   selected
                     ? "border-indigo-500 bg-indigo-50 text-indigo-900"
-                    : answers[currentQuestion.id]
+                    : locked
                       ? "border-gray-200 bg-gray-50 text-gray-400 cursor-default"
                       : "border-gray-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/40"
                 )}
