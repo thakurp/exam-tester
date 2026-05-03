@@ -15,14 +15,13 @@ export default async function AdminPapersPage() {
     include: {
       sections: { orderBy: { sortOrder: "asc" } },
       examSpecification: { include: { examProgram: true } },
-      _count: { select: { paperAttempts: true, generatedPapers: true } },
+      _count: { select: { paperAttempts: true } },
     },
     orderBy: { year: "desc" },
   });
 
   const recentPapers = await prisma.generatedPaper.findMany({
     include: {
-      examTemplate: true,
       _count: { select: { questions: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -70,10 +69,6 @@ export default async function AdminPapersPage() {
                   <div className="flex items-center gap-1.5 text-gray-600">
                     <Users className="h-3.5 w-3.5 text-gray-400" />
                     {t._count.paperAttempts} attempts
-                  </div>
-                  <div className="flex items-center gap-1.5 text-gray-600">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-gray-400" />
-                    {t._count.generatedPapers} papers
                   </div>
                 </div>
 

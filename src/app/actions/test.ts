@@ -16,6 +16,7 @@ interface CreateTestSessionParams {
 
 export async function createTestSession(params: CreateTestSessionParams) {
   const user = await getOrCreateDbUser();
+  if (!user) return { error: "Unauthorized" };
   const userId = user.id;
 
   const { subjectId, topicIds, questionCount, timeLimitMinutes, difficulties, mode } = params;
@@ -102,6 +103,7 @@ export async function submitAnswer(params: SubmitAnswerParams) {
 
   // Derive authenticated user server-side — never trust client-supplied identity
   const user = await getOrCreateDbUser();
+  if (!user) return { error: "Unauthorized" };
   const userId = user.id;
 
   // Verify session belongs to the authenticated user
@@ -182,6 +184,7 @@ export async function submitAnswer(params: SubmitAnswerParams) {
 export async function completeTestSession(sessionId: string) {
   // Derive authenticated user server-side
   const user = await getOrCreateDbUser();
+  if (!user) return { error: "Unauthorized" };
   const userId = user.id;
 
   const session = await prisma.testSession.findFirst({
