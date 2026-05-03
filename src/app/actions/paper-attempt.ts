@@ -165,7 +165,7 @@ export async function assembleAndStartPaperAttempt(examTemplateId: string): Prom
   const attempt = await prisma.paperAttempt.create({
     data: {
       userId: user.id,
-      mode: "FULL_PAPER",
+      mode: "REAL_PRACTICE_TEST",
       examProgramId: template.examSpecification.examProgramId,
       examTemplateId: template.id,
       generatedPaperId: paper.id,
