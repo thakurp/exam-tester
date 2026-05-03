@@ -82,6 +82,7 @@ model User {
   communityExplanations CommunityExplanation[]
   streak                Streak?
   paperAttempts         PaperAttempt[]
+  favoriteSubjects      UserFavoriteSubject[]
 
   @@index([clerkId])
   @@index([role])
@@ -104,9 +105,22 @@ model Subject {
 
   topics       Topic[]
   testSessions TestSession[]
+  favoritedBy  UserFavoriteSubject[]
 
   @@index([code])
   @@index([isActive])
+}
+
+model UserFavoriteSubject {
+  userId    String
+  subjectId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@id([userId, subjectId])
+  @@index([userId])
 }
 
 model Topic {

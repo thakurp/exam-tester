@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
 import { BookOpen, Trophy, Flame, Target, ArrowRight, PlusCircle, FileText } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { SubjectsGrid } from "@/components/dashboard/subjects-grid";
 
 export default async function DashboardPage() {
   const user = await getOrCreateDbUser();
@@ -28,6 +29,13 @@ export default async function DashboardPage() {
     orderBy: { sortOrder: "asc" },
     include: { _count: { select: { topics: true } } },
   });
+
+  // Fetch user's favorite subject IDs
+  const favoriteSubjects = await prisma.userFavoriteSubject.findMany({
+    where: { userId: user.id },
+    select: { subjectId: true },
+  });
+  const favoriteSubjectIds = favoriteSubjects.map((f) => f.subjectId);
 
   // Fetch streak and points
   const streak = await prisma.streak.findUnique({ where: { userId: user.id } });
@@ -157,41 +165,9 @@ export default async function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Choose a subject</h2>
+          <p className="text-xs text-gray-400">★ to pin favorites to the top</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subjects.map((subject) => (
-            <Card
-              key={subject.id}
-              className="hover:shadow-md transition-all cursor-pointer group border-l-4"
-              style={{ borderLeftColor: subject.color }}
-            >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <Badge
-                      variant="outline"
-                      className="text-xs mb-2"
-                      style={{ borderColor: subject.color, color: subject.color }}
-                    >
-                      {subject.examBoard ?? subject.country}
-                    </Badge>
-                    <h3 className="font-semibold text-sm group-hover:text-indigo-600 transition-colors">
-                      {subject.name}
-                    </h3>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mb-4">
-                  {subject._count.topics} topics
-                </p>
-                <Button size="sm" className="w-full" asChild>
-                  <Link href={`/test/new?subject=${subject.id}`}>
-                    Start Test <ArrowRight className="ml-1 h-3 w-3" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <SubjectsGrid subjects={subjects} initialFavoriteIds={favoriteSubjectIds} />
       </div>
 
       {/* Recent tests */}

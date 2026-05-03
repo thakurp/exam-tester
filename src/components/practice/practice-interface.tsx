@@ -12,7 +12,7 @@ import {
   completePaperAttempt,
 } from "@/app/actions/paper-attempt";
 import type { PaperAttemptData, SectionData, QuestionData } from "@/app/actions/paper-attempt";
-import { Clock, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, Send } from "lucide-react";
+import { Clock, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, Send, Eye, ArrowLeft } from "lucide-react";
 
 interface Props {
   data: PaperAttemptData;
@@ -80,6 +80,8 @@ export function PracticeInterface({ data, attemptId }: Props) {
 
   const [submitting, setSubmitting] = useState(false);
   const [sectionCompleting, setSectionCompleting] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [returnToReview, setReturnToReview] = useState(false);
   const savingRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const frqSavingRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -160,6 +162,8 @@ export function PracticeInterface({ data, attemptId }: Props) {
 
   async function handleSubmitAll() {
     setSubmitting(true);
+    setShowReview(false);
+    setReturnToReview(false);
     // Complete current section first
     if (activeSection && !completedSections[activeSection.id]) {
       await completeSection(attemptId, activeSection.id);
@@ -168,9 +172,38 @@ export function PracticeInterface({ data, attemptId }: Props) {
     router.push(`/practice/${attemptId}/review`);
   }
 
+  function handleOpenReview() {
+    setShowReview(true);
+    setReturnToReview(false);
+  }
+
+  function handleJumpToQuestion(sectionIdx: number, questionIdx: number) {
+    setShowReview(false);
+    setReturnToReview(true);
+    setActiveSectionIdx(sectionIdx);
+    setCurrentQuestionIdx(questionIdx);
+  }
+
   const isLastSection = activeSectionIdx === sections.length - 1;
   const currentSectionSecondsLeft = sectionSecondsLeft[activeSection?.id ?? ""] ?? 0;
   const timerWarning = currentSectionSecondsLeft < 300 && currentSectionSecondsLeft > 0;
+
+  // When editing a question from the review panel, bypass the "section completed" screen
+  const showQuestionsOverride = returnToReview;
+
+  if (showReview) {
+    return (
+      <ReviewPanel
+        sections={sections}
+        mcqAnswers={mcqAnswers}
+        frqAnswers={frqAnswers}
+        onClose={() => setShowReview(false)}
+        onJumpTo={handleJumpToQuestion}
+        onSubmit={handleSubmitAll}
+        submitting={submitting}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -213,16 +246,29 @@ export function PracticeInterface({ data, attemptId }: Props) {
               {formatTime(currentSectionSecondsLeft)}
             </div>
 
-            {activeSection && !completedSections[activeSection.id] && isLastSection ? (
+            {activeSection && returnToReview ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setReturnToReview(false);
+                  setShowReview(true);
+                }}
+                className="gap-1"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to Review
+              </Button>
+            ) : activeSection && !completedSections[activeSection.id] && isLastSection ? (
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={handleSubmitAll}
+                onClick={handleOpenReview}
                 disabled={submitting}
                 className="gap-1"
               >
-                <Send className="h-3.5 w-3.5" />
-                {submitting ? "Submitting…" : "Submit All"}
+                <Eye className="h-3.5 w-3.5" />
+                {submitting ? "Submitting…" : "Review & Submit"}
               </Button>
             ) : activeSection && !completedSections[activeSection.id] && !isLastSection ? (
               <Button
@@ -323,18 +369,18 @@ export function PracticeInterface({ data, attemptId }: Props) {
 
         {/* Main question area */}
         <main className="flex-1 min-w-0">
-          {completedSections[activeSection?.id ?? ""] ? (
+          {completedSections[activeSection?.id ?? ""] && !showQuestionsOverride ? (
             <div className="bg-white rounded-xl border p-8 text-center">
               <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">Section Completed</h3>
               {isLastSection ? (
                 <>
                   <p className="text-gray-500 mb-4">
-                    All sections done. Submit the full paper to see your results.
+                    All sections done. Review your answers before submitting.
                   </p>
-                  <Button onClick={handleSubmitAll} disabled={submitting} className="bg-indigo-600">
-                    <Send className="h-4 w-4 mr-2" />
-                    {submitting ? "Submitting…" : "Submit & View Results"}
+                  <Button onClick={handleOpenReview} disabled={submitting} className="bg-indigo-600 gap-2">
+                    <Eye className="h-4 w-4" />
+                    {submitting ? "Submitting…" : "Review & Submit"}
                   </Button>
                 </>
               ) : (
@@ -568,6 +614,247 @@ function FrqQuestion({
         >
           Next <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Review Panel ──────────────────────────────────────────────────────────────
+
+function ReviewPanel({
+  sections,
+  mcqAnswers,
+  frqAnswers,
+  onClose,
+  onJumpTo,
+  onSubmit,
+  submitting,
+}: {
+  sections: SectionData[];
+  mcqAnswers: Record<string, string>;
+  frqAnswers: Record<string, Record<string, string>>;
+  onClose: () => void;
+  onJumpTo: (sectionIdx: number, questionIdx: number) => void;
+  onSubmit: () => void;
+  submitting: boolean;
+}) {
+  const mcqSectionIdx = sections.findIndex((s) =>
+    s.allowedQuestionTypes.includes("MCQ")
+  );
+  const frqSectionIdx = sections.findIndex((s) =>
+    s.allowedQuestionTypes.includes("FRQ_STRUCTURED")
+  );
+  const mcqSection = mcqSectionIdx >= 0 ? sections[mcqSectionIdx] : null;
+  const frqSection = frqSectionIdx >= 0 ? sections[frqSectionIdx] : null;
+
+  const mcqAnsweredCount = mcqSection
+    ? mcqSection.questions.filter((q) => mcqAnswers[q.id]).length
+    : 0;
+  const mcqTotal = mcqSection?.questions.length ?? 0;
+
+  const frqAnsweredCount = frqSection
+    ? frqSection.questions.filter((q) =>
+        Object.values(frqAnswers[q.id] ?? {}).some((v) => v.trim().length > 0)
+      ).length
+    : 0;
+  const frqTotal = frqSection?.questions.length ?? 0;
+
+  const unansweredMcq = mcqTotal - mcqAnsweredCount;
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <div className="sticky top-0 z-20 bg-white border-b shadow-sm">
+        <div className="max-w-4xl mx-auto flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to exam
+            </button>
+            <span className="text-gray-300">|</span>
+            <h2 className="text-base font-semibold text-gray-900">Review Your Answers</h2>
+          </div>
+          <Button
+            onClick={onSubmit}
+            disabled={submitting}
+            className="bg-indigo-600 hover:bg-indigo-700 gap-2"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {submitting ? "Submitting…" : "Confirm & Submit"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto w-full px-4 py-6 space-y-8">
+        {/* Summary cards */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {mcqSection && (
+            <div className="bg-white rounded-xl border p-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                {mcqSection.title}
+              </p>
+              <p className="text-3xl font-bold text-gray-900">
+                {mcqAnsweredCount}
+                <span className="text-lg font-normal text-gray-400"> / {mcqTotal}</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">answered</p>
+              {unansweredMcq > 0 && (
+                <p className="text-xs text-amber-600 font-medium mt-1">
+                  ⚠ {unansweredMcq} unanswered — click to fill in
+                </p>
+              )}
+            </div>
+          )}
+          {frqSection && (
+            <div className="bg-white rounded-xl border p-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                {frqSection.title}
+              </p>
+              <p className="text-3xl font-bold text-gray-900">
+                {frqAnsweredCount}
+                <span className="text-lg font-normal text-gray-400"> / {frqTotal}</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">questions attempted</p>
+            </div>
+          )}
+        </div>
+
+        {/* MCQ answer sheet */}
+        {mcqSection && (
+          <section>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              {mcqSection.title} — Answer Sheet
+            </h3>
+            <div className="bg-white rounded-xl border overflow-hidden divide-y">
+              {mcqSection.questions.map((q, qIdx) => {
+                const selectedOptId = mcqAnswers[q.id];
+                const selectedOpt = q.options.find((o) => o.id === selectedOptId);
+                return (
+                  <div
+                    key={q.id}
+                    className={`flex items-center gap-3 px-4 py-3 ${
+                      !selectedOpt ? "bg-amber-50" : "hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className="text-xs font-mono text-gray-400 w-7 shrink-0 text-right">
+                      {qIdx + 1}.
+                    </span>
+                    <p className="text-sm text-gray-700 flex-1 truncate">
+                      {q.stem.length > 90 ? q.stem.slice(0, 90) + "…" : q.stem}
+                    </p>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {selectedOpt ? (
+                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">
+                          {selectedOpt.label}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-amber-600 font-medium">—</span>
+                      )}
+                      <button
+                        onClick={() => onJumpTo(mcqSectionIdx, qIdx)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                      >
+                        {selectedOpt ? "Change" : "Answer"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* FRQ review */}
+        {frqSection && (
+          <section>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              {frqSection.title} — Responses
+            </h3>
+            <div className="space-y-4">
+              {frqSection.questions.map((q, qIdx) => {
+                const qAnswers = frqAnswers[q.id] ?? {};
+                const hasAny = Object.values(qAnswers).some((v) => v.trim().length > 0);
+                return (
+                  <div
+                    key={q.id}
+                    className={`bg-white rounded-xl border overflow-hidden ${
+                      !hasAny ? "border-amber-200" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="text-sm font-semibold text-gray-800 shrink-0">
+                          FRQ {qIdx + 1}
+                        </span>
+                        <span className="text-xs text-gray-500 truncate">
+                          {q.stem.length > 60 ? q.stem.slice(0, 60) + "…" : q.stem}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => onJumpTo(frqSectionIdx, qIdx)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium shrink-0 ml-3"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <div className="px-4 py-3 space-y-2">
+                      {q.parts.length > 0 ? (
+                        q.parts.map((part) => {
+                          const answer = (qAnswers[part.id] ?? "").trim();
+                          return (
+                            <div key={part.id} className="flex items-start gap-3">
+                              <span className="text-xs font-semibold text-indigo-600 w-6 shrink-0 pt-0.5">
+                                {part.label}
+                              </span>
+                              {answer ? (
+                                <p className="text-xs text-gray-700 leading-relaxed line-clamp-2">
+                                  {answer.length > 140 ? answer.slice(0, 140) + "…" : answer}
+                                </p>
+                              ) : (
+                                <span className="text-xs text-amber-500 italic">Not answered</span>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        (() => {
+                          const answer = (qAnswers["__full__"] ?? "").trim();
+                          return answer ? (
+                            <p className="text-xs text-gray-700 line-clamp-2">{answer}</p>
+                          ) : (
+                            <span className="text-xs text-amber-500 italic">Not answered</span>
+                          );
+                        })()
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Bottom submit */}
+        <div className="flex items-center justify-between pt-4 pb-8 border-t">
+          <button
+            onClick={onClose}
+            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to exam
+          </button>
+          <Button
+            onClick={onSubmit}
+            disabled={submitting}
+            size="lg"
+            className="bg-indigo-600 hover:bg-indigo-700 gap-2"
+          >
+            <Send className="h-4 w-4" />
+            {submitting ? "Submitting…" : "Confirm & Submit"}
+          </Button>
+        </div>
       </div>
     </div>
   );
